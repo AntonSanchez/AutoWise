@@ -1,0 +1,83 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+const colors = {
+  background: '#171a1d',
+  card: '#1d2227',
+  border: 'rgba(255,255,255,0.09)',
+  gold: '#f2bc39',
+  muted: '#8d8a86',
+  text: '#f5f4f2',
+};
+
+export default function AuthScreen() {
+  const router = useRouter();
+  const [isSignUp, setIsSignUp] = useState(false);
+
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <View style={styles.container}>
+        <View style={styles.brandRow}>
+          <View style={styles.brandMark}>
+            <Ionicons name="car-sport" size={22} color={colors.gold} />
+          </View>
+          <Text style={styles.brand}>AUTOWISE</Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.title}>{isSignUp ? 'Create your account' : 'Welcome back'}</Text>
+          <Text style={styles.subtitle}>
+            {isSignUp ? 'Sign up to keep your vehicle maintenance organized.' : 'Sign in to continue to your garage.'}
+          </Text>
+          {isSignUp && (
+            <>
+              <Text style={styles.label}>FULL NAME</Text>
+              <TextInput style={styles.input} placeholder="Your name" placeholderTextColor={colors.muted} />
+            </>
+          )}
+          <Text style={styles.label}>EMAIL</Text>
+          <TextInput autoCapitalize="none" keyboardType="email-address" style={styles.input} placeholder="you@example.com" placeholderTextColor={colors.muted} />
+          <Text style={styles.label}>PASSWORD</Text>
+          <TextInput secureTextEntry style={styles.input} placeholder="Enter your password" placeholderTextColor={colors.muted} />
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.replace('/(tabs)')}
+            style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.primaryButtonText}>{isSignUp ? 'Create account' : 'Sign in'}</Text>
+            <Ionicons name="arrow-forward" size={18} color={colors.background} />
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={() => setIsSignUp((value) => !value)} style={styles.switchButton}>
+            <Text style={styles.switchText}>
+              {isSignUp ? 'Already have an account? ' : 'New to AutoWise? '}
+              <Text style={styles.switchAction}>{isSignUp ? 'Sign in' : 'Sign up'}</Text>
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safeArea: { backgroundColor: colors.background, flex: 1 },
+  container: { backgroundColor: colors.background, flex: 1, justifyContent: 'center', padding: 24 },
+  brandRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'center', marginBottom: 30 },
+  brandMark: { alignItems: 'center', backgroundColor: 'rgba(242,188,57,0.12)', borderRadius: 12, height: 42, justifyContent: 'center', marginRight: 10, width: 42 },
+  brand: { color: colors.gold, fontSize: 21, fontWeight: '900', letterSpacing: 1.4 },
+  card: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 20, borderWidth: 1, padding: 20 },
+  title: { color: colors.text, fontSize: 22, fontWeight: '800' },
+  subtitle: { color: colors.muted, fontSize: 13, lineHeight: 19, marginTop: 7 },
+  label: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 7, marginTop: 18 },
+  input: { backgroundColor: '#171a1d', borderColor: colors.border, borderRadius: 11, borderWidth: 1, color: colors.text, fontSize: 14, minHeight: 48, paddingHorizontal: 13 },
+  primaryButton: { alignItems: 'center', backgroundColor: colors.gold, borderRadius: 12, flexDirection: 'row', justifyContent: 'center', marginTop: 24, minHeight: 52, gap: 8 },
+  primaryButtonText: { color: colors.background, fontSize: 14, fontWeight: '800' },
+  pressed: { opacity: 0.8, transform: [{ scale: 0.99 }] },
+  switchButton: { alignItems: 'center', marginTop: 18, padding: 4 },
+  switchText: { color: colors.muted, fontSize: 12 },
+  switchAction: { color: colors.gold, fontWeight: '800' },
+});
