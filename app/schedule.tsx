@@ -1,5 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useState } from 'react';
 import {
+    Modal,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -55,10 +57,20 @@ const navItems = [
 export default function ScheduleScreen() {
   const goBack = useSafeBack();
   const navigate = useSafeNavigation(false);
-  const { profile, scheduledServices } = useProfile();
+  const { profile, scheduledServices, removeScheduledService } = useProfile();
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; title: string } | null>(null);
   const maintenanceItems = getMaintenanceRecommendations(profile.odometer);
   const nextMaintenance = maintenanceItems[0];
   const nextStatus = getStatusColors(nextMaintenance?.status ?? 'GOOD');
+
+  const confirmRemove = () => {
+    if (!removeTarget) {
+      return;
+    }
+
+    removeScheduledService(removeTarget.id);
+    setRemoveTarget(null);
+  };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -156,6 +168,12 @@ export default function ScheduleScreen() {
             <Text style={styles.sectionMini}>{scheduledServices.length} service{scheduledServices.length === 1 ? '' : 's'} booked</Text>
           </View>
 
+          {scheduledServices.length === 0 && (
+            <View style={styles.protocolCard}>
+              <Text style={styles.protocolSubtitle}>No services booked yet. Tap Book Services to add one.</Text>
+            </View>
+          )}
+
           {scheduledServices.map((service) => (
             <View key={service.id} style={styles.protocolCard}>
               <View style={styles.protocolRow}>
@@ -169,6 +187,15 @@ export default function ScheduleScreen() {
                 <View style={[styles.statusBadge, styles.bookedBadge]}>
                   <Text style={[styles.statusBadgeText, { color: colors.blue }]}>BOOKED</Text>
                 </View>
+                <Pressable
+                  accessibilityLabel={`Remove ${service.title} schedule`}
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={() => setRemoveTarget({ id: service.id, title: service.title })}
+                  style={({ pressed }) => [styles.removeButton, pressed && styles.removeButtonPressed]}
+                >
+                  <Ionicons name="trash-outline" size={17} color={colors.muted} />
+                </Pressable>
               </View>
 
               <View style={styles.protocolMetaRow}>
@@ -208,6 +235,42 @@ export default function ScheduleScreen() {
         </ScrollView>
 
         <BottomNavigation activeRoute="/schedule" />
+
+        <Modal
+          animationType="fade"
+          transparent
+          visible={removeTarget !== null}
+          onRequestClose={() => setRemoveTarget(null)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.removeModal}>
+              <View style={styles.warningIconWrap}>
+                <Ionicons name="trash-outline" size={24} color={colors.gold} />
+              </View>
+              <Text style={styles.modalTitle}>Remove schedule?</Text>
+              <Text style={styles.modalMessage}>
+                Remove <Text style={styles.modalEntry}>{removeTarget?.title}</Text> from your booked services? Its scheduled entry in History will be removed too.
+              </Text>
+              <View style={styles.modalActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setRemoveTarget(null)}
+                  style={({ pressed }) => [styles.cancelButton, pressed && styles.modalButtonPressed]}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={confirmRemove}
+                  style={({ pressed }) => [styles.confirmRemoveButton, pressed && styles.modalButtonPressed]}
+                >
+                  <Ionicons name="trash-outline" size={16} color={colors.dark} />
+                  <Text style={styles.confirmRemoveText}>Remove</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -272,6 +335,20 @@ const styles = StyleSheet.create({
   protocolSubtitle: { color: colors.muted, flexShrink: 1, fontSize: 10, marginTop: 3 },
   protocolMetaRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 10, rowGap: 5 },
   protocolMeta: { color: colors.muted, flexShrink: 1, fontSize: 10, marginRight: 8 },
+  removeButton: { alignItems: 'center', flexShrink: 0, height: 32, justifyContent: 'center', marginLeft: 8, width: 32 },
+  removeButtonPressed: { opacity: 0.65 },
+  modalBackdrop: { alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.72)', flex: 1, justifyContent: 'center', padding: 24 },
+  removeModal: { backgroundColor: '#242a30', borderColor: 'rgba(242,188,57,0.26)', borderRadius: 22, borderWidth: 1, maxWidth: 420, padding: 24, width: '100%' },
+  warningIconWrap: { alignItems: 'center', alignSelf: 'center', backgroundColor: 'rgba(242,188,57,0.14)', borderRadius: 28, height: 56, justifyContent: 'center', marginBottom: 16, width: 56 },
+  modalTitle: { color: colors.text, fontSize: 20, fontWeight: '800', textAlign: 'center' },
+  modalMessage: { color: colors.softText, fontSize: 13, lineHeight: 20, marginTop: 10, textAlign: 'center' },
+  modalEntry: { color: colors.text, fontWeight: '800' },
+  modalActions: { flexDirection: 'row', gap: 10, marginTop: 22 },
+  modalButtonPressed: { opacity: 0.8, transform: [{ scale: 0.98 }] },
+  cancelButton: { alignItems: 'center', borderColor: colors.border, borderRadius: 11, borderWidth: 1, flex: 1, justifyContent: 'center', minHeight: 46 },
+  cancelButtonText: { color: colors.softText, fontSize: 13, fontWeight: '700' },
+  confirmRemoveButton: { alignItems: 'center', backgroundColor: colors.gold, borderRadius: 11, flex: 1, flexDirection: 'row', gap: 7, justifyContent: 'center', minHeight: 46 },
+  confirmRemoveText: { color: colors.dark, fontSize: 13, fontWeight: '800' },
   addButton: { alignItems: 'center', backgroundColor: colors.gold, borderRadius: 10, justifyContent: 'center', marginTop: 14, minHeight: 48 },
   topBookButton: { flexDirection: 'row', gap: 8, marginBottom: 16, marginTop: 0 },
   addButtonPressed: { opacity: 0.8, transform: [{ scale: 0.99 }] },

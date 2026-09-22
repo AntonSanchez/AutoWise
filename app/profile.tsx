@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRef, useState } from 'react';
-import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
   Modal,
@@ -14,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAuth } from '@/components/auth-provider';
 import { getNextMaintenanceRecommendation, useProfile } from '@/components/profile-provider';
 import { useSafeBack } from '@/hooks/use-safe-navigation';
 
@@ -31,7 +31,7 @@ const colors = {
 
 export default function ProfileScreen() {
   const goBack = useSafeBack();
-  const router = useRouter();
+  const { signOut } = useAuth();
   const { profile, updateProfile, resetProfileSession } = useProfile();
   const actionInProgress = useRef(false);
   const [form, setForm] = useState(profile);
@@ -79,7 +79,7 @@ export default function ProfileScreen() {
     actionInProgress.current = true;
     setSettingsModal(null);
     resetProfileSession();
-    router.replace('/loading');
+    signOut();
   };
 
   return (

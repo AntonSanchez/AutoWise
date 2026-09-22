@@ -3,6 +3,11 @@ import { useEffect, useRef } from 'react';
 
 const navigationHistory: string[] = [];
 
+// Called on sign-in / sign-out so 'back' never replays screens from a previous session.
+export function resetNavigationHistory() {
+  navigationHistory.length = 0;
+}
+
 function normalizeRoute(pathname: string) {
   return pathname === '/' || pathname === '/index' ? '/(tabs)' : pathname;
 }

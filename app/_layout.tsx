@@ -6,6 +6,7 @@ import { useRef, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 
+import { AuthProvider, useAuth } from '@/components/auth-provider';
 import { ProfileProvider } from '@/components/profile-provider';
 
 SplashScreen.preventAutoHideAsync();
@@ -41,30 +42,48 @@ export default function RootLayout() {
 
   return (
     <ProfileProvider>
-      <ThemeProvider value={navigationTheme}>
-        <RootView onLayout={handleRootLayout}>
-          <Stack
-            screenOptions={{
-              animation: 'fade',
-              contentStyle: { backgroundColor: appBackground },
-              headerShown: false,
-            }}
-          >
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="profile" options={{ headerShown: false }} />
-            <Stack.Screen name="loading" options={{ headerShown: false }} />
-            <Stack.Screen name="auth" options={{ headerShown: false }} />
-            <Stack.Screen name="notifications" options={{ headerShown: false }} />
-            <Stack.Screen name="schedule" options={{ headerShown: false }} />
-            <Stack.Screen name="records" options={{ headerShown: false }} />
-            <Stack.Screen name="history" options={{ headerShown: false }} />
-            <Stack.Screen name="add-schedule" options={{ headerShown: false }} />
-            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-          </Stack>
-          <StatusBar style="light" />
-        </RootView>
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider value={navigationTheme}>
+          <RootView onLayout={handleRootLayout}>
+            <RootNavigator />
+            <StatusBar style="light" />
+          </RootView>
+        </ThemeProvider>
+      </AuthProvider>
     </ProfileProvider>
+  );
+}
+
+function RootNavigator() {
+  const { isLoggedIn } = useAuth();
+
+  // Stack.Protected removes a group's screens (and their history entries) whenever its guard is false.
+  // Signing in therefore drops the loading/auth screens, so "back" can never return to the login screen,
+  // and opening a login URL while signed in lands on the home screen instead.
+  return (
+    <Stack
+      screenOptions={{
+        animation: 'fade',
+        contentStyle: { backgroundColor: appBackground },
+        headerShown: false,
+      }}
+    >
+      <Stack.Protected guard={isLoggedIn}>
+        {/* Bottom-tab destinations switch instantly; the default fade would delay every tab press. */}
+        <Stack.Screen name="(tabs)" options={{ headerShown: false, animation: 'none' }} />
+        <Stack.Screen name="profile" options={{ headerShown: false }} />
+        <Stack.Screen name="notifications" options={{ headerShown: false }} />
+        <Stack.Screen name="schedule" options={{ headerShown: false, animation: 'none' }} />
+        <Stack.Screen name="records" options={{ headerShown: false, animation: 'none' }} />
+        <Stack.Screen name="history" options={{ headerShown: false, animation: 'none' }} />
+        <Stack.Screen name="add-schedule" options={{ headerShown: false }} />
+      </Stack.Protected>
+      <Stack.Protected guard={!isLoggedIn}>
+        <Stack.Screen name="loading" options={{ headerShown: false }} />
+        <Stack.Screen name="auth" options={{ headerShown: false }} />
+      </Stack.Protected>
+      <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+    </Stack>
   );
 }
 

@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { useAuth } from '@/components/auth-provider';
 
 const colors = {
   background: '#171a1d',
@@ -11,11 +12,49 @@ const colors = {
   gold: '#f2bc39',
   muted: '#8d8a86',
   text: '#f5f4f2',
+  danger: '#ff7a6b',
 };
 
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function AuthScreen() {
-  const router = useRouter();
+  const { signIn } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+
+  const handleSubmit = () => {
+    if (isSignUp && fullName.trim().length === 0) {
+      setError('Please enter your full name.');
+      return;
+    }
+
+    if (!emailPattern.test(email.trim())) {
+      setError('Enter a valid email address.');
+      return;
+    }
+
+    if (password.length === 0) {
+      setError('Please enter your password.');
+      return;
+    }
+
+    if (isSignUp && password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+
+    setError('');
+    // The route guard in app/_layout.tsx takes over from here and moves to the home screen.
+    signIn();
+  };
+
+  const toggleMode = () => {
+    setError('');
+    setIsSignUp((value) => !value);
+  };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -35,23 +74,65 @@ export default function AuthScreen() {
           {isSignUp && (
             <>
               <Text style={styles.label}>FULL NAME</Text>
-              <TextInput style={styles.input} placeholder="Your name" placeholderTextColor={colors.muted} />
+              <TextInput
+                autoCapitalize="words"
+                onChangeText={(value) => {
+                  setError('');
+                  setFullName(value);
+                }}
+                placeholder="Your name"
+                placeholderTextColor={colors.muted}
+                returnKeyType="next"
+                style={styles.input}
+                value={fullName}
+              />
             </>
           )}
           <Text style={styles.label}>EMAIL</Text>
-          <TextInput autoCapitalize="none" keyboardType="email-address" style={styles.input} placeholder="you@example.com" placeholderTextColor={colors.muted} />
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            onChangeText={(value) => {
+              setError('');
+              setEmail(value);
+            }}
+            placeholder="you@example.com"
+            placeholderTextColor={colors.muted}
+            returnKeyType="next"
+            style={styles.input}
+            value={email}
+          />
           <Text style={styles.label}>PASSWORD</Text>
-          <TextInput secureTextEntry style={styles.input} placeholder="Enter your password" placeholderTextColor={colors.muted} />
+          <TextInput
+            onChangeText={(value) => {
+              setError('');
+              setPassword(value);
+            }}
+            onSubmitEditing={handleSubmit}
+            placeholder="Enter your password"
+            placeholderTextColor={colors.muted}
+            returnKeyType="go"
+            secureTextEntry
+            style={styles.input}
+            value={password}
+          />
+
+          {error.length > 0 && (
+            <Text accessibilityLiveRegion="polite" style={styles.errorText}>
+              {error}
+            </Text>
+          )}
 
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.replace('/(tabs)')}
+            onPress={handleSubmit}
             style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
           >
             <Text style={styles.primaryButtonText}>{isSignUp ? 'Create account' : 'Sign in'}</Text>
             <Ionicons name="arrow-forward" size={18} color={colors.background} />
           </Pressable>
-          <Pressable accessibilityRole="button" onPress={() => setIsSignUp((value) => !value)} style={styles.switchButton}>
+          <Pressable accessibilityRole="button" onPress={toggleMode} style={styles.switchButton}>
             <Text style={styles.switchText}>
               {isSignUp ? 'Already have an account? ' : 'New to AutoWise? '}
               <Text style={styles.switchAction}>{isSignUp ? 'Sign in' : 'Sign up'}</Text>
@@ -74,6 +155,7 @@ const styles = StyleSheet.create({
   subtitle: { color: colors.muted, fontSize: 13, lineHeight: 19, marginTop: 7 },
   label: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 7, marginTop: 18 },
   input: { backgroundColor: '#171a1d', borderColor: colors.border, borderRadius: 11, borderWidth: 1, color: colors.text, fontSize: 14, minHeight: 48, paddingHorizontal: 13 },
+  errorText: { color: colors.danger, fontSize: 12, lineHeight: 17, marginTop: 16 },
   primaryButton: { alignItems: 'center', backgroundColor: colors.gold, borderRadius: 12, flexDirection: 'row', justifyContent: 'center', marginTop: 24, minHeight: 52, gap: 8 },
   primaryButtonText: { color: colors.background, fontSize: 14, fontWeight: '800' },
   pressed: { opacity: 0.8, transform: [{ scale: 0.99 }] },

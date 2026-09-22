@@ -219,6 +219,7 @@ type ProfileContextValue = {
   setProfile: (profile: VehicleProfile) => void;
   updateProfile: (changes: Partial<VehicleProfile>) => void;
   addScheduledService: (service: ScheduledService) => void;
+  removeScheduledService: (id: string) => void;
   addHistoryItem: (item: VehicleHistoryItem) => void;
   deleteHistoryItem: (id: string) => void;
   clearHistoryItems: () => void;
@@ -253,6 +254,11 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
           },
           ...current,
         ]);
+      },
+      removeScheduledService: (id: string) => {
+        setScheduledServices((current) => current.filter((service) => service.id !== id));
+        // Booking a service also creates a linked 'Scheduled' history entry; drop it too.
+        setHistoryItems((current) => current.filter((item) => item.id !== `${id}-history`));
       },
       addHistoryItem: (item: VehicleHistoryItem) => {
         setHistoryItems((current) => [item, ...current]);
