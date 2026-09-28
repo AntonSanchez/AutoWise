@@ -3,13 +3,11 @@
 Installation Commands:
 
 - npm install
-
--npx expo install expo-image-picker expo-image-manipulator
+- npx expo install expo-image-picker expo-image-manipulator
 
 Running Commands:
 
--npx expo start
-
+- npx expo start
 
 #Accounts
 
