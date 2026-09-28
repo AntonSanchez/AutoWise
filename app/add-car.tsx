@@ -13,7 +13,7 @@ import { useSafeBack } from '@/hooks/use-safe-navigation';
 import { formatDateInput, parseDateInput, startOfToday } from '@/lib/date-input';
 
 const transmissionOptions = ['Automatic', 'Manual'] as const;
-const fuelOptions = ['Gasoline', 'Electric'] as const;
+const fuelOptions = ['Gasoline', 'Diesel', 'Electric'] as const;
 
 const emptyForm = {
   vehicleName: '',
