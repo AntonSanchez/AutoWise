@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { useMemo } from 'react';
-import { useSafeNavigation } from '@/hooks/use-safe-navigation';
 import { useThemeColors, type ThemeColors } from '@/components/theme-provider';
+import { useSafeNavigation } from '@/hooks/use-safe-navigation';
+import { useMemo } from 'react';
 
 export function AppHeader() {
   const navigate = useSafeNavigation(false);
@@ -34,7 +34,7 @@ export function AppHeader() {
           onPress={() => navigate('/profile')}
           style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}
         >
-          <Ionicons name="person" size={17} color="#51431e" />
+          <Ionicons name="person" size={17} color={colors.dark} />
         </Pressable>
       </View>
     </View>
@@ -88,7 +88,7 @@ function createStyles(colors: ThemeColors) {
   },
   profileButton: {
     alignItems: 'center',
-    backgroundColor: '#f4d26b',
+    backgroundColor: colors.gold,
     borderRadius: 10,
     height: 32,
     justifyContent: 'center',

@@ -13,12 +13,12 @@ import { BottomNavigation } from '@/components/bottom-navigation';
 import { useProfile } from '@/components/profile-provider';
 import { useMemo } from 'react';
 import { useSafeNavigation } from '@/hooks/use-safe-navigation';
-import { useThemeColors, withAlpha, type ThemeColors } from '@/components/theme-provider';
+import { useAppTheme, withAlpha, type ThemeColors } from '@/components/theme-provider';
 
 export default function HomeScreen() {
   const navigate = useSafeNavigation(false);
-  const colors = useThemeColors();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { colors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { cars, profile, scheduledServices } = useProfile();
   const primaryCar = cars.find((car) => car.id === profile.primaryCarId) ?? cars[0];
   const nextScheduledService = scheduledServices[0];
@@ -33,7 +33,12 @@ export default function HomeScreen() {
             <Text style={styles.dashboardTitle}>Dashboard</Text>
           </View>
 
-          <View style={styles.heroCard}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open your cars"
+            onPress={() => navigate('/cars')}
+            style={({ pressed }) => [styles.heroCard, pressed && styles.buttonPressed]}
+          >
             <View style={styles.heroTextWrap}>
               <Text style={styles.heroLabel}>{primaryCar ? 'CURRENT VEHICLE' : 'NO CARS YET'}</Text>
               <Text style={styles.heroTitle}>{primaryCar?.vehicleName ?? 'Add your first vehicle'}</Text>
@@ -45,16 +50,10 @@ export default function HomeScreen() {
                 </View>
               )}
             </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Open your garage"
-              hitSlop={8}
-              onPress={() => navigate(primaryCar ? `/car/${primaryCar.id}` : '/cars')}
-              style={({ pressed }) => [styles.heroBadge, pressed && styles.buttonPressed]}
-            >
+            <View style={styles.heroBadge}>
               <Ionicons name="car" size={24} color={colors.gold} />
-            </Pressable>
-          </View>
+            </View>
+          </Pressable>
 
           <View style={styles.summaryCard}>
             <View style={styles.summaryHeader}>
@@ -82,7 +81,7 @@ export default function HomeScreen() {
   );
 }
 
-function createStyles(colors: ThemeColors) {
+function createStyles(colors: ThemeColors, isDark: boolean) {
   return StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -182,10 +181,10 @@ function createStyles(colors: ThemeColors) {
   },
   heroCard: {
     alignItems: 'center',
-    backgroundColor: colors.cardAlt,
-    borderColor: withAlpha(colors.gold, 0.24),
+    backgroundColor: withAlpha(colors.gold, isDark ? 0.18 : 0.14),
+    borderColor: withAlpha(colors.gold, isDark ? 0.6 : 0.55),
     borderRadius: 18,
-    borderWidth: 1,
+    borderWidth: 1.5,
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 14,
@@ -212,7 +211,8 @@ function createStyles(colors: ThemeColors) {
     lineHeight: 22,
   },
   heroMeta: {
-    color: colors.softText,
+    color: colors.text,
+    opacity: 0.8,
     fontFamily: 'Arial',
     fontSize: 11,
     marginTop: 7,
@@ -224,14 +224,14 @@ function createStyles(colors: ThemeColors) {
     marginTop: 12,
   },
   heroDetail: {
-    color: colors.softText,
+    color: colors.text,
     fontSize: 11,
     fontWeight: '700',
   },
   heroBadge: {
     alignItems: 'center',
-    backgroundColor: withAlpha(colors.gold, 0.14),
-    borderColor: withAlpha(colors.gold, 0.25),
+    backgroundColor: withAlpha(colors.gold, isDark ? 0.28 : 0.22),
+    borderColor: withAlpha(colors.gold, 0.5),
     borderRadius: 16,
     borderWidth: 1,
     height: 54,

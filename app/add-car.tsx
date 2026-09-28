@@ -7,14 +7,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppHeader } from '@/components/app-header';
 import { BottomNavigation } from '@/components/bottom-navigation';
 import { useProfile } from '@/components/profile-provider';
+import { SelectField } from '@/components/select-field';
 import { useThemeColors, type ThemeColors } from '@/components/theme-provider';
 import { useSafeBack } from '@/hooks/use-safe-navigation';
+import { formatDateInput, parseDateInput, startOfToday } from '@/lib/date-input';
+
+const transmissionOptions = ['Automatic', 'Manual'] as const;
+const fuelOptions = ['Gasoline', 'Electric'] as const;
 
 const emptyForm = {
   vehicleName: '',
   vehicleModel: '',
-  transmissionType: '',
-  fuelType: '',
+  transmissionType: 'Automatic',
+  fuelType: 'Gasoline',
   dateBought: '',
   description: '',
 };
@@ -53,6 +58,18 @@ export default function AddCarScreen() {
 
     if (trimmed.vehicleName.length === 0 || trimmed.vehicleModel.length === 0) {
       setValidationError('Please enter at least a vehicle name and model.');
+      return;
+    }
+
+    const boughtDate = parseDateInput(trimmed.dateBought);
+
+    if (!boughtDate) {
+      setValidationError('Enter a valid date bought/owned in MM/DD/YYYY format.');
+      return;
+    }
+
+    if (boughtDate.getTime() > startOfToday().getTime()) {
+      setValidationError("Date bought/owned can't be in the future.");
       return;
     }
 
@@ -109,29 +126,32 @@ export default function AddCarScreen() {
             />
 
             <Text style={styles.label}>Transmission type</Text>
-            <TextInput
-              style={styles.input}
+            <SelectField
+              title="Transmission type"
               value={form.transmissionType}
-              onChangeText={(value) => handleChange('transmissionType', value)}
-              placeholder="e.g. Automatic"
-              placeholderTextColor={colors.muted}
+              options={transmissionOptions}
+              onChange={(value) => handleChange('transmissionType', value)}
+              placeholder="Select transmission type"
             />
 
             <Text style={styles.label}>Fuel type</Text>
-            <TextInput
-              style={styles.input}
+            <SelectField
+              title="Fuel type"
               value={form.fuelType}
-              onChangeText={(value) => handleChange('fuelType', value)}
-              placeholder="e.g. Gasoline"
-              placeholderTextColor={colors.muted}
+              options={fuelOptions}
+              onChange={(value) => handleChange('fuelType', value)}
+              placeholder="Select fuel type"
             />
 
             <Text style={styles.label}>Date bought/owned</Text>
             <TextInput
               style={styles.input}
               value={form.dateBought}
-              onChangeText={(value) => handleChange('dateBought', value)}
-              placeholder="e.g. Apr 14, 2023"
+              onChangeText={(value) => handleChange('dateBought', formatDateInput(value))}
+              keyboardType="numeric"
+              inputMode="numeric"
+              maxLength={10}
+              placeholder="MM/DD/YYYY (04/14/2023)"
               placeholderTextColor={colors.muted}
             />
 

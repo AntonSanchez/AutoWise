@@ -18,35 +18,15 @@ import { BottomNavigation } from '@/components/bottom-navigation';
 import { getMaintenanceRecommendations, getNextMaintenanceRecommendation, useProfile } from '@/components/profile-provider';
 import { useSafeBack } from '@/hooks/use-safe-navigation';
 import { useThemeColors, withAlpha, type ThemeColors } from '@/components/theme-provider';
-
-function formatScheduledDate(value: string) {
-  const digits = value.replace(/\D/g, '').slice(0, 8);
-
-  if (digits.length <= 2) {
-    return digits;
-  }
-
-  if (digits.length <= 4) {
-    return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-  }
-
-  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-}
-
-function isValidScheduledDate(value: string) {
-  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value.trim());
-
-  if (!match) {
-    return false;
-  }
-
-  const month = Number(match[1]);
-  const day = Number(match[2]);
-  const year = Number(match[3]);
-  const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-
-  return year >= 1000 && year <= 9999 && month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth[month - 1];
-}
+import {
+  formatDateInput,
+  formatTimeDisplay,
+  formatTimeInput,
+  parseDateInput,
+  parseTimeInput,
+  startOfToday,
+  type Meridiem,
+} from '@/lib/date-input';
 
 export default function AddScheduleScreen() {
   const goBack = useSafeBack();
@@ -61,6 +41,7 @@ export default function AddScheduleScreen() {
   const [validationError, setValidationError] = useState('');
   const [serviceTypeOpen, setServiceTypeOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [meridiem, setMeridiem] = useState<Meridiem>('AM');
   const [serviceForm, setServiceForm] = useState({
     title: nextMaintenance.title,
     vehicle: car?.vehicleName ?? '',
@@ -104,10 +85,36 @@ export default function AddScheduleScreen() {
     }
 
     const hasBlankRequiredField = requiredFields.some((field) => field.length === 0);
-    const hasInvalidDate = !isValidScheduledDate(serviceForm.scheduledDate);
 
-    if (hasBlankRequiredField || hasInvalidDate) {
-      setValidationError(hasInvalidDate ? 'Enter a valid date: month 01–12, day for that month (February 01–28), and a four-digit year.' : 'Please complete all fields before saving.');
+    if (hasBlankRequiredField) {
+      setValidationError('Please complete all fields before saving.');
+      return;
+    }
+
+    const scheduledDate = parseDateInput(serviceForm.scheduledDate);
+
+    if (!scheduledDate) {
+      setValidationError('Enter a valid date in MM/DD/YYYY format (month 01–12, a real day for that month, four-digit year).');
+      return;
+    }
+
+    if (scheduledDate.getTime() < startOfToday().getTime()) {
+      setValidationError("Scheduled date can't be in the past.");
+      return;
+    }
+
+    const parsedTime = parseTimeInput(serviceForm.time, meridiem);
+
+    if (!parsedTime) {
+      setValidationError('Enter a valid time in hh:mm format, e.g. 10:30, then choose AM or PM.');
+      return;
+    }
+
+    const scheduledAt = new Date(scheduledDate);
+    scheduledAt.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
+
+    if (scheduledAt.getTime() < Date.now()) {
+      setValidationError("The scheduled time can't be in the past.");
       return;
     }
 
@@ -123,7 +130,7 @@ export default function AddScheduleScreen() {
       carId,
       title: serviceForm.title.trim(),
       vehicle: serviceForm.vehicle.trim(),
-      time: serviceForm.time.trim(),
+      time: formatTimeDisplay(serviceForm.time, meridiem),
       scheduledDate: serviceForm.scheduledDate.trim(),
       notes: serviceForm.notes.trim(),
     });
@@ -173,19 +180,43 @@ export default function AddScheduleScreen() {
             />
 
             <Text style={styles.label}>Time</Text>
-            <TextInput
-              style={styles.input}
-              value={serviceForm.time}
-              onChangeText={(value) => handleChange('time', value)}
-              placeholder="e.g. 10:00 AM"
-              placeholderTextColor={colors.muted}
-            />
+            <View style={styles.timeRow}>
+              <TextInput
+                style={[styles.input, styles.timeInput]}
+                value={serviceForm.time}
+                onChangeText={(value) => handleChange('time', formatTimeInput(value))}
+                keyboardType="numeric"
+                inputMode="numeric"
+                maxLength={5}
+                placeholder="hh:mm (10:30)"
+                placeholderTextColor={colors.muted}
+              />
+              {(['AM', 'PM'] as const).map((option) => {
+                const selected = meridiem === option;
+
+                return (
+                  <Pressable
+                    key={option}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Set ${option}`}
+                    accessibilityState={{ selected }}
+                    onPress={() => {
+                      setValidationError('');
+                      setMeridiem(option);
+                    }}
+                    style={({ pressed }) => [styles.meridiemButton, selected && styles.meridiemSelected, pressed && styles.selectPressed]}
+                  >
+                    <Text style={[styles.meridiemText, selected && styles.meridiemTextSelected]}>{option}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
 
             <Text style={styles.label}>Scheduled date</Text>
             <TextInput
               style={styles.input}
               value={serviceForm.scheduledDate}
-              onChangeText={(value) => handleChange('scheduledDate', formatScheduledDate(value))}
+              onChangeText={(value) => handleChange('scheduledDate', formatDateInput(value))}
               keyboardType="numeric"
               inputMode="numeric"
               maxLength={10}
@@ -346,6 +377,37 @@ function createStyles(colors: ThemeColors) {
     color: colors.text,
     fontFamily: 'Arial',
     fontSize: 14,
+  },
+  timeRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  timeInput: {
+    flex: 1,
+  },
+  meridiemButton: {
+    alignItems: 'center',
+    backgroundColor: colors.cardAlt,
+    borderColor: colors.border,
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 46,
+    width: 54,
+  },
+  meridiemSelected: {
+    backgroundColor: colors.gold,
+    borderColor: colors.gold,
+  },
+  meridiemText: {
+    color: colors.muted,
+    fontFamily: 'Arial',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  meridiemTextSelected: {
+    color: colors.dark,
   },
   textArea: {
     minHeight: 110,

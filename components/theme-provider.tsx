@@ -52,11 +52,11 @@ const darkPalette: Omit<ThemeColors, 'gold'> = {
 };
 
 const lightPalette: Omit<ThemeColors, 'gold'> = {
-  background: '#f2f1ec',
+  background: '#eef2f4',
   headerBackground: '#ffffff',
   panel: '#ffffff',
   card: '#ffffff',
-  cardAlt: '#f5f3ee',
+  cardAlt: '#f3f6f7',
   border: 'rgba(0,0,0,0.09)',
   text: '#1c1e22',
   softText: '#454a52',
@@ -72,9 +72,23 @@ const lightPalette: Omit<ThemeColors, 'gold'> = {
   danger: '#d94c46',
 };
 
+// Accent swatches are bright, pastel-ish colors tuned to read as highlights against the
+// dark theme's near-black surfaces. Used verbatim as small text/icon color in light mode,
+// several are too light to stay readable against near-white cards, so light mode uses a
+// darkened version of the chosen accent for text/icons/borders instead.
+function darken(hex: string, amount: number): string {
+  const normalized = hex.replace('#', '');
+  const value = parseInt(normalized, 16);
+  const r = Math.round(((value >> 16) & 255) * (1 - amount));
+  const g = Math.round(((value >> 8) & 255) * (1 - amount));
+  const b = Math.round((value & 255) * (1 - amount));
+  return `#${[r, g, b].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+}
+
 function buildColors(mode: ThemeMode, accent: string): ThemeColors {
   const base = mode === 'dark' ? darkPalette : lightPalette;
-  return { ...base, gold: accent };
+  const resolvedAccent = mode === 'light' ? darken(accent, 0.25) : accent;
+  return { ...base, gold: resolvedAccent };
 }
 
 // Converts a '#rrggbb' color plus an alpha into an rgba() string, so tinted card/badge
