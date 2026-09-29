@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/components/auth-provider';
+import { usePendingUsers } from '@/components/pending-users-provider';
 
 const colors = {
   background: '#171a1d',
@@ -19,10 +21,14 @@ const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function AuthScreen() {
   const { signIn } = useAuth();
+  const router = useRouter();
+  const pendingUsers = usePendingUsers();
   const [isSignUp, setIsSignUp] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = () => {
@@ -47,12 +53,48 @@ export default function AuthScreen() {
     }
 
     setError('');
-    // The route guard in app/_layout.tsx takes over from here and moves to the home screen.
+
+    if (isSignUp) {
+      // Check if email already exists
+      const existing = pendingUsers.users.find(
+        (u) => u.email.toLowerCase() === email.trim().toLowerCase(),
+      );
+      if (existing) {
+        setError('An account with this email already exists.');
+        return;
+      }
+      // Add to pending list — admin will approve
+      pendingUsers.addUser(fullName.trim(), email.trim().toLowerCase(), password);
+      setSubmitted(true);
+      return;
+    }
+
+    // Sign in flow — check approval status
+    if (pendingUsers.isPending(email.trim())) {
+      setError('Your account is still waiting for admin approval.');
+      return;
+    }
+    if (pendingUsers.isRejected(email.trim())) {
+      setError('Your account has been rejected by the admin.');
+      return;
+    }
+    if (pendingUsers.isApproved(email.trim())) {
+      const user = pendingUsers.findUser(email.trim(), password);
+      if (!user) {
+        setError('Incorrect password.');
+        return;
+      }
+      signIn();
+      return;
+    }
+
+    // User not found in the system at all — for demo, just sign in
     signIn();
   };
 
   const toggleMode = () => {
     setError('');
+    setSubmitted(false);
     setIsSignUp((value) => !value);
   };
 
@@ -67,10 +109,11 @@ export default function AuthScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.title}>{isSignUp ? 'Create your account' : 'Welcome back'}</Text>
+          <Text style={styles.title}>{submitted ? 'Request submitted' : isSignUp ? 'Create your account' : 'Welcome'}</Text>
           <Text style={styles.subtitle}>
-            {isSignUp ? 'Sign up to keep your vehicle maintenance organized.' : 'Sign in to continue to your garage.'}
+            {submitted ? 'Your account is pending admin approval. You can sign in after it is approved.' : isSignUp ? 'Sign up to keep your vehicle maintenance organized.' : 'Sign in to continue to your garage.'}
           </Text>
+          {!submitted && <>
           {isSignUp && (
             <>
               <Text style={styles.label}>FULL NAME</Text>
@@ -104,19 +147,24 @@ export default function AuthScreen() {
             value={email}
           />
           <Text style={styles.label}>PASSWORD</Text>
-          <TextInput
-            onChangeText={(value) => {
-              setError('');
-              setPassword(value);
-            }}
-            onSubmitEditing={handleSubmit}
-            placeholder="Enter your password"
-            placeholderTextColor={colors.muted}
-            returnKeyType="go"
-            secureTextEntry
-            style={styles.input}
-            value={password}
-          />
+          <View style={styles.passwordContainer}>
+            <TextInput
+              onChangeText={(value) => {
+                setError('');
+                setPassword(value);
+              }}
+              onSubmitEditing={handleSubmit}
+              placeholder="Enter your password"
+              placeholderTextColor={colors.muted}
+              returnKeyType="go"
+              secureTextEntry={!showPassword}
+              style={[styles.input, styles.passwordInput]}
+              value={password}
+            />
+            <Pressable onPress={() => setShowPassword((v) => !v)} style={styles.eyeButton}>
+              <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color={colors.muted} />
+            </Pressable>
+          </View>
 
           {error.length > 0 && (
             <Text accessibilityLiveRegion="polite" style={styles.errorText}>
@@ -138,6 +186,15 @@ export default function AuthScreen() {
               <Text style={styles.switchAction}>{isSignUp ? 'Sign in' : 'Sign up'}</Text>
             </Text>
           </Pressable>
+          {!isSignUp && (
+            <Pressable accessibilityRole="button" onPress={() => router.push('/admin')} style={styles.adminLink}>
+              <Text style={styles.adminLinkText}>Admin login</Text>
+            </Pressable>
+          )}
+          </>}
+          {submitted && <Pressable accessibilityRole="button" onPress={() => { setSubmitted(false); setIsSignUp(false); }} style={styles.switchButton}>
+            <Text style={styles.switchAction}>Back to sign in</Text>
+          </Pressable>}
         </View>
       </View>
     </SafeAreaView>
@@ -155,6 +212,9 @@ const styles = StyleSheet.create({
   subtitle: { color: colors.muted, fontSize: 13, lineHeight: 19, marginTop: 7 },
   label: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 7, marginTop: 18 },
   input: { backgroundColor: '#171a1d', borderColor: colors.border, borderRadius: 11, borderWidth: 1, color: colors.text, fontSize: 14, minHeight: 48, paddingHorizontal: 13 },
+  passwordContainer: { position: 'relative' as const },
+  passwordInput: { paddingRight: 48 },
+  eyeButton: { alignItems: 'center' as const, bottom: 0, justifyContent: 'center' as const, position: 'absolute' as const, right: 0, top: 0, width: 48 },
   errorText: { color: colors.danger, fontSize: 12, lineHeight: 17, marginTop: 16 },
   primaryButton: { alignItems: 'center', backgroundColor: colors.gold, borderRadius: 12, flexDirection: 'row', justifyContent: 'center', marginTop: 24, minHeight: 52, gap: 8 },
   primaryButtonText: { color: colors.background, fontSize: 14, fontWeight: '800' },
@@ -162,4 +222,6 @@ const styles = StyleSheet.create({
   switchButton: { alignItems: 'center', marginTop: 18, padding: 4 },
   switchText: { color: colors.muted, fontSize: 12 },
   switchAction: { color: colors.gold, fontWeight: '800' },
+  adminLink: { alignItems: 'center', marginTop: 13, padding: 4 },
+  adminLinkText: { color: colors.muted, fontSize: 12, textDecorationLine: 'underline' },
 });

@@ -7,6 +7,7 @@ import { StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { AuthProvider, useAuth } from '@/components/auth-provider';
+import { PendingUsersProvider } from '@/components/pending-users-provider';
 import { ProfileProvider } from '@/components/profile-provider';
 
 SplashScreen.preventAutoHideAsync();
@@ -41,16 +42,18 @@ export default function RootLayout() {
   };
 
   return (
-    <ProfileProvider>
-      <AuthProvider>
-        <ThemeProvider value={navigationTheme}>
-          <RootView onLayout={handleRootLayout}>
-            <RootNavigator />
-            <StatusBar style="light" />
-          </RootView>
-        </ThemeProvider>
-      </AuthProvider>
-    </ProfileProvider>
+    <PendingUsersProvider>
+      <ProfileProvider>
+        <AuthProvider>
+          <ThemeProvider value={navigationTheme}>
+            <RootView onLayout={handleRootLayout}>
+              <RootNavigator />
+              <StatusBar style="light" />
+            </RootView>
+          </ThemeProvider>
+        </AuthProvider>
+      </ProfileProvider>
+    </PendingUsersProvider>
   );
 }
 
@@ -82,6 +85,7 @@ function RootNavigator() {
         <Stack.Screen name="loading" options={{ headerShown: false }} />
         <Stack.Screen name="auth" options={{ headerShown: false }} />
       </Stack.Protected>
+      <Stack.Screen name="admin" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
     </Stack>
   );
