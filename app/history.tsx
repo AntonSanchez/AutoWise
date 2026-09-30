@@ -1,12 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppHeader } from '@/components/app-header';
 import { BottomNavigation } from '@/components/bottom-navigation';
 import { useProfile } from '@/components/profile-provider';
-import { useSafeBack } from '@/hooks/use-safe-navigation';
+import { useSafeBack, useSafeNavigation } from '@/hooks/use-safe-navigation';
 
 const navItems = [
   { label: 'Home', icon: 'home', route: '/(tabs)' },
@@ -30,9 +30,44 @@ const colors = {
 
 export default function HistoryScreen() {
   const goBack = useSafeBack();
-  const { profile, historyItems, deleteHistoryItem, clearHistoryItems } = useProfile();
+  const navigate = useSafeNavigation(false);
+  const { profile, activeVehicleId, historyItems, addHistoryItem, deleteHistoryItem, clearHistoryItems } = useProfile();
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
   const [clearAllOpen, setClearAllOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Completed' | 'Scheduled' | 'In Progress' | 'Cancelled'>('All');
+  const [addOpen, setAddOpen] = useState(false);
+  const [entryError, setEntryError] = useState('');
+  const [entry, setEntry] = useState({ title: '', date: '', mileage: '', shop: '', cost: '', serviceType: 'Maintenance', notes: '', receiptUri: '' });
+  const vehicleHistory = historyItems.filter((item) => !item.vehicleId || item.vehicleId === activeVehicleId);
+  const filteredHistory = vehicleHistory.filter((item) =>
+    (statusFilter === 'All' || item.status === statusFilter)
+    && `${item.title} ${item.shop ?? ''} ${item.notes ?? ''}`.toLowerCase().includes(search.trim().toLowerCase()),
+  );
+
+  const saveEntry = () => {
+    const cost = Number(entry.cost || 0);
+    if (!entry.title.trim() || !entry.date.trim() || !entry.mileage.trim() || !Number.isFinite(cost) || cost < 0) {
+      setEntryError('Enter a service name, date, mileage, and a valid non-negative cost.');
+      return;
+    }
+    addHistoryItem({
+      id: `service-${Date.now()}`,
+      title: entry.title.trim(),
+      date: entry.date.trim(),
+      mileage: entry.mileage.trim(),
+      status: 'Completed',
+      vehicleId: activeVehicleId,
+      shop: entry.shop.trim(),
+      cost,
+      serviceType: entry.serviceType.trim() || 'Maintenance',
+      notes: entry.notes.trim(),
+      receiptUri: entry.receiptUri.trim() || undefined,
+    });
+    setEntry({ title: '', date: '', mileage: '', shop: '', cost: '', serviceType: 'Maintenance', notes: '', receiptUri: '' });
+    setEntryError('');
+    setAddOpen(false);
+  };
 
   const confirmDelete = (id: string, title: string) => {
     setDeleteTarget({ id, title });
@@ -48,7 +83,7 @@ export default function HistoryScreen() {
   };
 
   const confirmClearAll = () => {
-    clearHistoryItems();
+    clearHistoryItems(activeVehicleId);
     setClearAllOpen(false);
   };
 
@@ -82,7 +117,25 @@ export default function HistoryScreen() {
           <Ionicons name="chevron-forward" size={18} color={colors.muted} />
         </View>
 
-        {historyItems.length > 0 && (
+        <View style={styles.historyToolbar}>
+          <TextInput value={search} onChangeText={setSearch} placeholder="Search service, shop, notes" placeholderTextColor={colors.muted} style={styles.searchInput} />
+          <Pressable accessibilityRole="button" onPress={() => { setEntryError(''); setAddOpen(true); }} style={({ pressed }) => [styles.addRecordButton, pressed && styles.modalButtonPressed]}>
+            <Ionicons name="add" size={20} color={colors.dark} />
+            <Text style={styles.addRecordText}>Add</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open receipts" onPress={() => navigate('/receipts')} style={({ pressed }) => [styles.receiptButton, pressed && styles.modalButtonPressed]}>
+            <Ionicons name="receipt-outline" size={18} color={colors.gold} />
+          </Pressable>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+          {(['All', 'Completed', 'Scheduled', 'In Progress', 'Cancelled'] as const).map((filter) => (
+            <Pressable key={filter} accessibilityRole="button" accessibilityState={{ selected: statusFilter === filter }} onPress={() => setStatusFilter(filter)} style={[styles.filterChip, statusFilter === filter && styles.filterChipActive]}>
+              <Text style={[styles.filterChipText, statusFilter === filter && styles.filterChipTextActive]}>{filter}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+
+        {vehicleHistory.length > 0 && (
           <Pressable
             accessibilityLabel="Clear all history"
             accessibilityRole="button"
@@ -95,7 +148,7 @@ export default function HistoryScreen() {
         )}
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          {historyItems.map((item) => (
+          {filteredHistory.map((item) => (
             <View key={item.id} style={styles.historyCard}>
               <View style={styles.cardHeader}>
                 <View style={styles.iconWrap}>
@@ -105,7 +158,7 @@ export default function HistoryScreen() {
                   <Text style={styles.itemTitle}>{item.title}</Text>
                   <Text style={styles.itemDate}>{item.date}</Text>
                 </View>
-                <Text style={styles.statusTag}>{item.status}</Text>
+                <Text style={[styles.statusTag, item.status === 'Cancelled' && styles.cancelledStatusTag]}>{item.status}</Text>
                 <Pressable
                   accessibilityLabel={`Delete ${item.title} history entry`}
                   accessibilityRole="button"
@@ -121,11 +174,37 @@ export default function HistoryScreen() {
                 <Text style={styles.metaLabel}>Mileage</Text>
                 <Text style={styles.metaValue}>{item.mileage}</Text>
               </View>
+              {!!item.shop && <View style={styles.metaRow}><Text style={styles.metaLabel}>Shop</Text><Text style={styles.metaValue}>{item.shop}</Text></View>}
+              {item.cost !== undefined && item.cost > 0 && <View style={styles.metaRow}><Text style={styles.metaLabel}>Cost · {item.serviceType ?? 'Service'}</Text><Text style={styles.metaValue}>₱{item.cost.toLocaleString()}</Text></View>}
+              {!!item.notes && <Text style={styles.entryNotes}>{item.notes}</Text>}
+              {!!item.receiptUri && <Pressable accessibilityRole="button" onPress={() => navigate('/receipts')} style={styles.receiptRow}><Ionicons name="image-outline" size={15} color={colors.gold} /><Text numberOfLines={1} style={styles.receiptText}>View receipt</Text><Ionicons name="chevron-forward" size={14} color={colors.gold} /></Pressable>}
             </View>
           ))}
+          {filteredHistory.length === 0 && <Text style={styles.emptyHistory}>No service records match your search.</Text>}
         </ScrollView>
 
         <BottomNavigation activeRoute="/history" />
+
+        <Modal animationType="fade" transparent visible={addOpen} onRequestClose={() => setAddOpen(false)}>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.addRecordModal}>
+              <Text style={styles.modalTitle}>Add service record</Text>
+              <ScrollView keyboardShouldPersistTaps="handled" style={styles.entryForm}>
+                {([
+                  ['title', 'Service name'], ['date', 'Date (e.g. Sep 30, 2026)'], ['mileage', 'Mileage (km)'], ['shop', 'Shop or mechanic'], ['cost', 'Cost (₱)'], ['serviceType', 'Service type'], ['notes', 'Notes'], ['receiptUri', 'Receipt image URI (optional)'],
+                ] as const).map(([key, label]) => (
+                  <TextInput key={key} value={entry[key]} onChangeText={(value) => { setEntryError(''); setEntry((current) => ({ ...current, [key]: value })); }} placeholder={label} placeholderTextColor={colors.muted} keyboardType={key === 'cost' || key === 'mileage' ? 'numeric' : 'default'} multiline={key === 'notes'} style={[styles.entryInput, key === 'notes' && styles.notesInput]} />
+                ))}
+                {!!entryError && <Text style={styles.entryError}>{entryError}</Text>}
+                {!!entry.receiptUri && <Image source={{ uri: entry.receiptUri }} style={styles.receiptPreview} resizeMode="cover" />}
+              </ScrollView>
+              <View style={styles.modalActions}>
+                <Pressable accessibilityRole="button" onPress={() => setAddOpen(false)} style={[styles.cancelButton, styles.modalButton]}><Text style={styles.cancelButtonText}>Cancel</Text></Pressable>
+                <Pressable accessibilityRole="button" onPress={saveEntry} style={[styles.confirmDeleteButton, styles.modalButton]}><Text style={styles.confirmDeleteText}>Save record</Text></Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         <Modal
           animationType="fade"
@@ -261,6 +340,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingBottom: 24,
   },
+  historyToolbar: { alignItems: 'center', flexDirection: 'row', gap: 9, marginHorizontal: 18, marginBottom: 10 },
+  searchInput: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 10, borderWidth: 1, color: colors.text, flex: 1, fontSize: 12, minHeight: 44, paddingHorizontal: 12 },
+  addRecordButton: { alignItems: 'center', backgroundColor: colors.gold, borderRadius: 10, flexDirection: 'row', gap: 3, justifyContent: 'center', minHeight: 44, paddingHorizontal: 11 },
+  receiptButton: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 10, borderWidth: 1, height: 44, justifyContent: 'center', width: 44 },
+  addRecordText: { color: colors.dark, fontSize: 12, fontWeight: '800' },
+  filterRow: { gap: 7, paddingHorizontal: 18, paddingBottom: 12 },
+  filterChip: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 99, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 7 },
+  filterChipActive: { backgroundColor: 'rgba(242,188,57,0.12)', borderColor: 'rgba(242,188,57,0.4)' },
+  filterChipText: { color: colors.muted, fontSize: 10, fontWeight: '700' },
+  filterChipTextActive: { color: colors.gold },
+  emptyHistory: { color: colors.muted, fontSize: 13, paddingVertical: 30, textAlign: 'center' },
+  entryNotes: { color: colors.softText, fontSize: 11, lineHeight: 17, marginTop: 10 },
+  receiptRow: { alignItems: 'center', flexDirection: 'row', gap: 6, marginTop: 9 },
+  receiptText: { color: colors.gold, flex: 1, fontSize: 10 },
+  addRecordModal: { backgroundColor: '#242a30', borderColor: 'rgba(242,188,57,0.26)', borderRadius: 20, borderWidth: 1, maxHeight: '88%', maxWidth: 460, padding: 18, width: '100%' },
+  entryForm: { marginTop: 12 },
+  entryInput: { backgroundColor: colors.background, borderColor: colors.border, borderRadius: 10, borderWidth: 1, color: colors.text, fontSize: 13, marginBottom: 9, minHeight: 44, paddingHorizontal: 12 },
+  notesInput: { minHeight: 72, paddingTop: 10, textAlignVertical: 'top' },
+  entryError: { color: '#ff8c86', fontSize: 11, lineHeight: 16, marginBottom: 8 },
+  receiptPreview: { borderRadius: 10, height: 140, marginBottom: 10, width: '100%' },
+  modalButton: { minHeight: 44, paddingHorizontal: 9 },
   profileSummaryCard: {
     backgroundColor: '#22272d',
     borderColor: 'rgba(242,188,57,0.24)',
@@ -377,6 +477,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
+  cancelledStatusTag: { color: '#ff6d68' },
   deleteButton: {
     alignItems: 'center',
     height: 32,

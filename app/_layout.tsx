@@ -79,6 +79,7 @@ function RootNavigator() {
         <Stack.Screen name="schedule" options={{ headerShown: false, animation: 'none' }} />
         <Stack.Screen name="records" options={{ headerShown: false, animation: 'none' }} />
         <Stack.Screen name="history" options={{ headerShown: false, animation: 'none' }} />
+        <Stack.Screen name="receipts" options={{ headerShown: false, animation: 'none' }} />
         <Stack.Screen name="add-schedule" options={{ headerShown: false }} />
       </Stack.Protected>
       <Stack.Protected guard={!isLoggedIn}>

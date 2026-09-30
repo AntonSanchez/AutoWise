@@ -32,13 +32,13 @@ const colors = {
 export default function ProfileScreen() {
   const goBack = useSafeBack();
   const { signOut } = useAuth();
-  const { profile, updateProfile, resetProfileSession } = useProfile();
+  const { profile, vehicles, activeVehicleId, remindersEnabled, setRemindersEnabled, selectVehicle, addVehicle, updateProfile, resetProfileSession } = useProfile();
   const actionInProgress = useRef(false);
   const [form, setForm] = useState(profile);
   const [validationError, setValidationError] = useState('');
   const [saving, setSaving] = useState(false);
-  const [remindersEnabled, setRemindersEnabled] = useState(true);
   const [profileEditorVisible, setProfileEditorVisible] = useState(false);
+  const [addingVehicle, setAddingVehicle] = useState(false);
   const [profileCreatedModalVisible, setProfileCreatedModalVisible] = useState(false);
   const [settingsModal, setSettingsModal] = useState<'about' | 'vehicle' | 'logout' | null>(null);
   const liveRecommendation = getNextMaintenanceRecommendation(form.odometer);
@@ -64,7 +64,12 @@ export default function ProfileScreen() {
 
     actionInProgress.current = true;
     setSaving(true);
-    updateProfile(form);
+    if (addingVehicle) {
+      addVehicle(form);
+      setAddingVehicle(false);
+    } else {
+      updateProfile(form);
+    }
     setSaving(false);
     setProfileEditorVisible(false);
     setProfileCreatedModalVisible(true);
@@ -105,7 +110,7 @@ export default function ProfileScreen() {
           {profileEditorVisible && <View style={styles.card}>
             <View style={styles.formHeader}>
               <View>
-                <Text style={styles.formTitle}>Create vehicle profile</Text>
+                <Text style={styles.formTitle}>{addingVehicle ? 'Add a vehicle' : 'Edit vehicle profile'}</Text>
                 <Text style={styles.formSubtitle}>Add the details AutoWise uses for maintenance reminders.</Text>
               </View>
               <Pressable
@@ -181,15 +186,52 @@ export default function ProfileScreen() {
               style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
               onPress={handleSave}
             >
-              {saving ? <ActivityIndicator color={colors.dark} /> : <Text style={styles.primaryButtonText}>Save Vehicle Profile</Text>}
+              {saving ? <ActivityIndicator color={colors.dark} /> : <Text style={styles.primaryButtonText}>{addingVehicle ? 'Add Vehicle' : 'Save Vehicle Profile'}</Text>}
             </Pressable>
             {validationError && <Text style={styles.validationError}>{validationError}</Text>}
           </View>}
 
+          <View style={styles.vehicleSelectorSection}>
+            <Text style={styles.selectorTitle}>Your vehicles</Text>
+            {vehicles.map((vehicle) => (
+              <Pressable
+                key={vehicle.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected: vehicle.id === activeVehicleId }}
+                onPress={() => {
+                  selectVehicle(vehicle.id);
+                  setForm(vehicle);
+                  setAddingVehicle(false);
+                  setProfileEditorVisible(false);
+                }}
+                style={({ pressed }) => [styles.vehicleOption, vehicle.id === activeVehicleId && styles.vehicleOptionActive, pressed && styles.settingsRowPressed]}
+              >
+                <Ionicons name="car-outline" size={19} color={colors.gold} />
+                <View style={styles.rowTextWrap}>
+                  <Text style={styles.settingsRowText}>{vehicle.vehicleName}</Text>
+                  <Text style={styles.rowSubtitle}>{vehicle.vehicleModel} · {vehicle.odometer}</Text>
+                </View>
+                {vehicle.id === activeVehicleId && <Ionicons name="checkmark-circle" size={19} color={colors.gold} />}
+              </Pressable>
+            ))}
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                setForm({ ...profile, id: `vehicle-${Date.now()}`, vehicleName: '', vehicleModel: '', odometer: '0 km', purchaseDate: '', insurance: '', servicePlan: 'Every 5,000 km' });
+                setAddingVehicle(true);
+                setProfileEditorVisible(true);
+              }}
+              style={({ pressed }) => [styles.addVehicleButton, pressed && styles.buttonPressed]}
+            >
+              <Ionicons name="add-circle-outline" size={19} color={colors.gold} />
+              <Text style={styles.addVehicleText}>Add another vehicle</Text>
+            </Pressable>
+          </View>
+
           <View style={styles.settingsList}>
             <Pressable
               accessibilityRole="button"
-              onPress={() => setProfileEditorVisible(true)}
+              onPress={() => { setForm(profile); setAddingVehicle(false); setProfileEditorVisible(true); }}
               style={({ pressed }) => [styles.settingsRow, pressed && styles.settingsRowPressed]}
             >
               <Ionicons name="person-outline" size={19} color={colors.gold} />
@@ -202,7 +244,7 @@ export default function ProfileScreen() {
             <Pressable
               accessibilityRole="switch"
               accessibilityState={{ checked: remindersEnabled }}
-              onPress={() => setRemindersEnabled((enabled) => !enabled)}
+              onPress={() => setRemindersEnabled(!remindersEnabled)}
               style={({ pressed }) => [styles.settingsRow, styles.settingsRowBorder, pressed && styles.settingsRowPressed]}
             >
               <Ionicons name="settings-outline" size={19} color={colors.gold} />
@@ -230,7 +272,7 @@ export default function ProfileScreen() {
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              onPress={handleLogout}
+              onPress={() => setSettingsModal('logout')}
               style={({ pressed }) => [styles.settingsRow, styles.settingsRowBorder, pressed && styles.settingsRowPressed]}
             >
               <Ionicons name="log-out-outline" size={19} color="#ff8c86" />
@@ -269,7 +311,7 @@ export default function ProfileScreen() {
               <View style={styles.settingsModalActions}>
                 <Pressable
                   accessibilityRole="button"
-                    onPress={handleLogout}
+                  onPress={() => setSettingsModal(null)}
                   style={({ pressed }) => [styles.settingsCancelButton, pressed && styles.buttonPressed]}
                 >
                   <Text style={styles.settingsCancelText}>{settingsModal === 'logout' ? 'Cancel' : 'Close'}</Text>
@@ -277,7 +319,7 @@ export default function ProfileScreen() {
                 {settingsModal === 'logout' && (
                   <Pressable
                     accessibilityRole="button"
-                    onPress={() => setSettingsModal(null)}
+                    onPress={handleLogout}
                     style={({ pressed }) => [styles.settingsLogoutButton, pressed && styles.buttonPressed]}
                   >
                     <Text style={styles.settingsLogoutButtonText}>Log out</Text>
@@ -299,9 +341,9 @@ export default function ProfileScreen() {
               <View style={styles.successModalIcon}>
                 <Ionicons name="checkmark" size={28} color={colors.dark} />
               </View>
-              <Text style={styles.settingsModalTitle}>Profile successfully created</Text>
+              <Text style={styles.settingsModalTitle}>Vehicle profile saved</Text>
               <Text style={styles.settingsModalMessage}>
-                Your vehicle profile has been saved and is ready for maintenance reminders.
+                Your vehicle details are saved and ready for maintenance reminders.
               </Text>
               <Pressable
                 accessibilityRole="button"
@@ -441,6 +483,12 @@ const styles = StyleSheet.create({
     marginTop: 16,
     overflow: 'hidden',
   },
+  vehicleSelectorSection: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 14, borderWidth: 1, marginTop: 16, overflow: 'hidden', padding: 12 },
+  selectorTitle: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 8, textTransform: 'uppercase' },
+  vehicleOption: { alignItems: 'center', borderRadius: 10, flexDirection: 'row', gap: 10, minHeight: 52, paddingHorizontal: 8 },
+  vehicleOptionActive: { backgroundColor: 'rgba(242,188,57,0.09)' },
+  addVehicleButton: { alignItems: 'center', borderTopColor: colors.border, borderTopWidth: 1, flexDirection: 'row', gap: 9, marginTop: 7, minHeight: 45, paddingHorizontal: 8 },
+  addVehicleText: { color: colors.gold, fontSize: 12, fontWeight: '800' },
   settingsRow: {
     alignItems: 'center',
     flexDirection: 'row',

@@ -6,13 +6,14 @@ import {
     ScrollView,
     StyleSheet,
     Text,
+    TextInput,
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppHeader } from '@/components/app-header';
 import { BottomNavigation } from '@/components/bottom-navigation';
-import { getMaintenanceRecommendations, useProfile } from '@/components/profile-provider';
+import { getMaintenanceRecommendations, type ScheduledService, useProfile } from '@/components/profile-provider';
 import { useSafeBack, useSafeNavigation } from '@/hooks/use-safe-navigation';
 
 const colors = {
@@ -57,8 +58,10 @@ const navItems = [
 export default function ScheduleScreen() {
   const goBack = useSafeBack();
   const navigate = useSafeNavigation(false);
-  const { profile, scheduledServices, removeScheduledService } = useProfile();
+  const { profile, activeVehicleId, scheduledServices, updateScheduledService } = useProfile();
   const [removeTarget, setRemoveTarget] = useState<{ id: string; title: string } | null>(null);
+  const [editingService, setEditingService] = useState<ScheduledService | null>(null);
+  const vehicleBookings = scheduledServices.filter((service) => !service.vehicleId || service.vehicleId === activeVehicleId);
   const maintenanceItems = getMaintenanceRecommendations(profile.odometer);
   const nextMaintenance = maintenanceItems[0];
   const nextStatus = getStatusColors(nextMaintenance?.status ?? 'GOOD');
@@ -68,7 +71,7 @@ export default function ScheduleScreen() {
       return;
     }
 
-    removeScheduledService(removeTarget.id);
+    updateScheduledService(removeTarget.id, { status: 'Cancelled' });
     setRemoveTarget(null);
   };
 
@@ -165,16 +168,16 @@ export default function ScheduleScreen() {
 
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>Owner scheduled</Text>
-            <Text style={styles.sectionMini}>{scheduledServices.length} service{scheduledServices.length === 1 ? '' : 's'} booked</Text>
+            <Text style={styles.sectionMini}>{vehicleBookings.filter((service) => service.status !== 'Cancelled' && service.status !== 'Completed').length} active booking{vehicleBookings.filter((service) => service.status !== 'Cancelled' && service.status !== 'Completed').length === 1 ? '' : 's'}</Text>
           </View>
 
-          {scheduledServices.length === 0 && (
+          {vehicleBookings.length === 0 && (
             <View style={styles.protocolCard}>
               <Text style={styles.protocolSubtitle}>No services booked yet. Tap Book Services to add one.</Text>
             </View>
           )}
 
-          {scheduledServices.map((service) => (
+          {vehicleBookings.map((service) => (
             <View key={service.id} style={styles.protocolCard}>
               <View style={styles.protocolRow}>
                 <View style={styles.protocolIconWrap}>
@@ -184,23 +187,23 @@ export default function ScheduleScreen() {
                   <Text style={styles.protocolTitle}>{service.title}</Text>
                   <Text style={styles.protocolSubtitle}>{service.vehicle}</Text>
                 </View>
-                <View style={[styles.statusBadge, styles.bookedBadge]}>
-                  <Text style={[styles.statusBadgeText, { color: colors.blue }]}>BOOKED</Text>
+                <View style={[styles.statusBadge, service.status === 'Confirmed' ? styles.confirmedBadge : service.status === 'Cancelled' ? styles.cancelledBadge : styles.bookedBadge]}>
+                  <Text style={[styles.statusBadgeText, { color: service.status === 'Confirmed' ? colors.green : service.status === 'Cancelled' ? colors.red : colors.blue }]}>{(service.status ?? 'Pending').toUpperCase()}</Text>
                 </View>
-                <Pressable
-                  accessibilityLabel={`Remove ${service.title} schedule`}
-                  accessibilityRole="button"
-                  hitSlop={8}
-                  onPress={() => setRemoveTarget({ id: service.id, title: service.title })}
-                  style={({ pressed }) => [styles.removeButton, pressed && styles.removeButtonPressed]}
-                >
-                  <Ionicons name="trash-outline" size={17} color={colors.muted} />
-                </Pressable>
               </View>
 
               <View style={styles.protocolMetaRow}>
                 <Text style={styles.protocolMeta}>Date: {service.scheduledDate}</Text>
                 <Text style={styles.protocolMeta}>Target: {service.targetMileage}</Text>
+              </View>
+              <View style={styles.bookingActions}>
+                {service.status !== 'Cancelled' && service.status !== 'Completed' && <>
+                  <Pressable accessibilityRole="button" onPress={() => setEditingService({ ...service })} style={styles.bookingAction}><Ionicons name="create-outline" size={14} color={colors.gold} /><Text style={styles.bookingActionText}>Edit</Text></Pressable>
+                  {service.status === 'Pending' && <Pressable accessibilityRole="button" onPress={() => updateScheduledService(service.id, { status: 'Confirmed' })} style={styles.bookingAction}><Ionicons name="checkmark-circle-outline" size={14} color={colors.green} /><Text style={styles.bookingActionText}>Confirm</Text></Pressable>}
+                  {service.status === 'Confirmed' && <Pressable accessibilityRole="button" onPress={() => updateScheduledService(service.id, { status: 'In Progress' })} style={styles.bookingAction}><Ionicons name="play-circle-outline" size={14} color={colors.gold} /><Text style={styles.bookingActionText}>Start</Text></Pressable>}
+                  {(service.status === 'Confirmed' || service.status === 'In Progress') && <Pressable accessibilityRole="button" onPress={() => updateScheduledService(service.id, { status: 'Completed' })} style={styles.bookingAction}><Ionicons name="checkmark-done-outline" size={14} color={colors.green} /><Text style={styles.bookingActionText}>Complete</Text></Pressable>}
+                  <Pressable accessibilityRole="button" onPress={() => setRemoveTarget({ id: service.id, title: service.title })} style={styles.bookingAction}><Ionicons name="close-circle-outline" size={14} color={colors.red} /><Text style={[styles.bookingActionText, { color: colors.red }]}>Cancel</Text></Pressable>
+                </>}
               </View>
             </View>
           ))}
@@ -236,6 +239,22 @@ export default function ScheduleScreen() {
 
         <BottomNavigation activeRoute="/schedule" />
 
+        <Modal animationType="fade" transparent visible={editingService !== null} onRequestClose={() => setEditingService(null)}>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.removeModal}>
+              <Text style={styles.modalTitle}>Edit or reschedule</Text>
+              <TextInput value={editingService?.title ?? ''} onChangeText={(value) => setEditingService((current) => current ? { ...current, title: value } : current)} placeholder="Service type" placeholderTextColor={colors.muted} style={styles.bookingInput} />
+              <TextInput value={editingService?.scheduledDate ?? ''} onChangeText={(value) => setEditingService((current) => current ? { ...current, scheduledDate: value } : current)} placeholder="Date (MM/DD/YYYY)" placeholderTextColor={colors.muted} style={styles.bookingInput} />
+              <TextInput value={editingService?.targetMileage ?? ''} onChangeText={(value) => setEditingService((current) => current ? { ...current, targetMileage: value } : current)} placeholder="Target mileage" placeholderTextColor={colors.muted} style={styles.bookingInput} />
+              <TextInput value={editingService?.notes ?? ''} onChangeText={(value) => setEditingService((current) => current ? { ...current, notes: value } : current)} placeholder="Notes" placeholderTextColor={colors.muted} multiline style={[styles.bookingInput, styles.bookingNotesInput]} />
+              <View style={styles.modalActions}>
+                <Pressable accessibilityRole="button" onPress={() => setEditingService(null)} style={styles.cancelButton}><Text style={styles.cancelButtonText}>Cancel</Text></Pressable>
+                <Pressable accessibilityRole="button" onPress={() => { if (editingService) updateScheduledService(editingService.id, editingService); setEditingService(null); }} style={styles.confirmRemoveButton}><Text style={styles.confirmRemoveText}>Save booking</Text></Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
         <Modal
           animationType="fade"
           transparent
@@ -247,9 +266,9 @@ export default function ScheduleScreen() {
               <View style={styles.warningIconWrap}>
                 <Ionicons name="trash-outline" size={24} color={colors.gold} />
               </View>
-              <Text style={styles.modalTitle}>Remove schedule?</Text>
+              <Text style={styles.modalTitle}>Cancel booking?</Text>
               <Text style={styles.modalMessage}>
-                Remove <Text style={styles.modalEntry}>{removeTarget?.title}</Text> from your booked services? Its scheduled entry in History will be removed too.
+                Cancel <Text style={styles.modalEntry}>{removeTarget?.title}</Text>? The booking will remain in your list with a cancelled status.
               </Text>
               <View style={styles.modalActions}>
                 <Pressable
@@ -264,8 +283,8 @@ export default function ScheduleScreen() {
                   onPress={confirmRemove}
                   style={({ pressed }) => [styles.confirmRemoveButton, pressed && styles.modalButtonPressed]}
                 >
-                  <Ionicons name="trash-outline" size={16} color={colors.dark} />
-                  <Text style={styles.confirmRemoveText}>Remove</Text>
+                  <Ionicons name="close-circle-outline" size={16} color={colors.dark} />
+                  <Text style={styles.confirmRemoveText}>Cancel booking</Text>
                 </Pressable>
               </View>
             </View>
@@ -311,6 +330,13 @@ const styles = StyleSheet.create({
   statusBadge: { borderRadius: 999, borderWidth: 1, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 4 },
   statusBadgeText: { fontSize: 9, fontWeight: '800' },
   bookedBadge: { backgroundColor: 'rgba(130,184,255,0.14)', borderColor: 'rgba(130,184,255,0.38)' },
+  confirmedBadge: { backgroundColor: 'rgba(122,225,162,0.14)', borderColor: 'rgba(122,225,162,0.38)' },
+  cancelledBadge: { backgroundColor: 'rgba(255,109,104,0.14)', borderColor: 'rgba(255,109,104,0.38)' },
+  bookingActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 12 },
+  bookingAction: { alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 8, flexDirection: 'row', gap: 4, paddingHorizontal: 9, paddingVertical: 7 },
+  bookingActionText: { color: colors.softText, fontSize: 10, fontWeight: '700' },
+  bookingInput: { backgroundColor: colors.background, borderColor: colors.border, borderRadius: 10, borderWidth: 1, color: colors.text, fontSize: 13, marginTop: 10, minHeight: 44, paddingHorizontal: 12 },
+  bookingNotesInput: { minHeight: 72, paddingTop: 10, textAlignVertical: 'top' },
   taskDetailsRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
   detailLabel: { color: colors.muted, fontSize: 9, fontWeight: '700', letterSpacing: 0.8, marginBottom: 4, textTransform: 'uppercase' },
   detailValue: { color: colors.text, fontSize: 13, fontWeight: '700' },

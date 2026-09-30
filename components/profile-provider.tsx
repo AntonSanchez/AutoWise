@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
 
 export type VehicleProfile = {
+  id: string;
   ownerName: string;
   vehicleName: string;
   vehicleModel: string;
@@ -37,6 +38,9 @@ export type ScheduledService = {
   targetMileage: string;
   scheduledDate: string;
   notes: string;
+  assignedMechanic?: string;
+  status?: 'Pending' | 'Confirmed' | 'In Progress' | 'Completed' | 'Cancelled';
+  vehicleId?: string;
 };
 
 export type VehicleHistoryItem = {
@@ -44,10 +48,17 @@ export type VehicleHistoryItem = {
   title: string;
   date: string;
   mileage: string;
-  status: 'Completed' | 'Scheduled' | 'In Progress';
+  status: 'Completed' | 'Scheduled' | 'In Progress' | 'Cancelled';
+  vehicleId?: string;
+  shop?: string;
+  cost?: number;
+  notes?: string;
+  receiptUri?: string;
+  serviceType?: string;
 };
 
 export const defaultProfile: VehicleProfile = {
+  id: 'vehicle-primary',
   ownerName: 'Joe',
   vehicleName: '2023 Hatchback 1.2L Turbo',
   vehicleModel: 'Hyundai Accent',
@@ -57,16 +68,7 @@ export const defaultProfile: VehicleProfile = {
   servicePlan: 'Every 5,000 km',
 };
 
-export const defaultScheduledServices: ScheduledService[] = [
-  {
-    id: 'default-oil-service',
-    title: 'Oil & Filter Change',
-    vehicle: defaultProfile.vehicleName,
-    targetMileage: '45,000 km',
-    scheduledDate: 'Nov 28, 2024',
-    notes: 'Full synthetic 0W-20 and OEM filter recommended.',
-  },
-];
+export const defaultScheduledServices: ScheduledService[] = [];
 
 export const defaultHistoryItems: VehicleHistoryItem[] = [
   {
@@ -75,6 +77,10 @@ export const defaultHistoryItems: VehicleHistoryItem[] = [
     date: 'Apr 14, 2024',
     mileage: '42,400 km',
     status: 'Completed',
+    vehicleId: defaultProfile.id,
+    shop: 'AutoWise Demo Shop',
+    cost: 2400,
+    serviceType: 'Maintenance',
   },
   {
     id: 'history-brake-pads',
@@ -82,6 +88,10 @@ export const defaultHistoryItems: VehicleHistoryItem[] = [
     date: 'Jan 08, 2024',
     mileage: '39,120 km',
     status: 'Completed',
+    vehicleId: defaultProfile.id,
+    shop: 'AutoWise Demo Shop',
+    cost: 0,
+    serviceType: 'Repair',
   },
   {
     id: 'history-tire-rotation',
@@ -89,6 +99,10 @@ export const defaultHistoryItems: VehicleHistoryItem[] = [
     date: 'Nov 21, 2023',
     mileage: '35,800 km',
     status: 'Completed',
+    vehicleId: defaultProfile.id,
+    shop: 'AutoWise Demo Shop',
+    cost: 0,
+    serviceType: 'Maintenance',
   },
   {
     id: 'history-battery-check',
@@ -96,6 +110,10 @@ export const defaultHistoryItems: VehicleHistoryItem[] = [
     date: 'Sep 15, 2023',
     mileage: '31,900 km',
     status: 'Completed',
+    vehicleId: defaultProfile.id,
+    shop: 'AutoWise Demo Shop',
+    cost: 0,
+    serviceType: 'Inspection',
   },
 ];
 
@@ -214,15 +232,22 @@ export function getNextMaintenanceRecommendation(value: string): MaintenanceReco
 
 type ProfileContextValue = {
   profile: VehicleProfile;
+  vehicles: VehicleProfile[];
+  activeVehicleId: string;
+  remindersEnabled: boolean;
   scheduledServices: ScheduledService[];
   historyItems: VehicleHistoryItem[];
   setProfile: (profile: VehicleProfile) => void;
   updateProfile: (changes: Partial<VehicleProfile>) => void;
+  addVehicle: (vehicle: VehicleProfile) => void;
+  selectVehicle: (id: string) => void;
+  setRemindersEnabled: (enabled: boolean) => void;
   addScheduledService: (service: ScheduledService) => void;
+  updateScheduledService: (id: string, changes: Partial<ScheduledService>) => void;
   removeScheduledService: (id: string) => void;
   addHistoryItem: (item: VehicleHistoryItem) => void;
   deleteHistoryItem: (id: string) => void;
-  clearHistoryItems: () => void;
+  clearHistoryItems: (vehicleId?: string) => void;
   resetProfileSession: () => void;
 };
 
@@ -230,30 +255,69 @@ const ProfileContext = createContext<ProfileContextValue | undefined>(undefined)
 
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<VehicleProfile>(defaultProfile);
+  const [vehicles, setVehicles] = useState<VehicleProfile[]>([defaultProfile]);
+  const [activeVehicleId, setActiveVehicleId] = useState(defaultProfile.id);
+  const [remindersEnabled, setRemindersEnabled] = useState(true);
   const [scheduledServices, setScheduledServices] = useState<ScheduledService[]>(defaultScheduledServices);
   const [historyItems, setHistoryItems] = useState<VehicleHistoryItem[]>(defaultHistoryItems);
 
   const value = useMemo(
     () => ({
       profile,
+      vehicles,
+      activeVehicleId,
+      remindersEnabled,
       scheduledServices,
       historyItems,
-      setProfile,
-      updateProfile: (changes: Partial<VehicleProfile>) => {
-        setProfile((current) => ({ ...current, ...changes }));
+      setProfile: (nextProfile: VehicleProfile) => {
+        setProfile(nextProfile);
+        setActiveVehicleId(nextProfile.id);
+        setVehicles((current) => current.some((vehicle) => vehicle.id === nextProfile.id)
+          ? current.map((vehicle) => vehicle.id === nextProfile.id ? nextProfile : vehicle)
+          : [...current, nextProfile]);
       },
+      updateProfile: (changes: Partial<VehicleProfile>) => {
+        const updated = { ...profile, ...changes };
+        setProfile(updated);
+        setVehicles((current) => current.map((vehicle) => vehicle.id === profile.id ? updated : vehicle));
+      },
+      addVehicle: (vehicle: VehicleProfile) => {
+        setVehicles((current) => [...current, vehicle]);
+        setProfile(vehicle);
+        setActiveVehicleId(vehicle.id);
+      },
+      selectVehicle: (id: string) => {
+        const vehicle = vehicles.find((item) => item.id === id);
+        if (vehicle) {
+          setProfile(vehicle);
+          setActiveVehicleId(vehicle.id);
+        }
+      },
+      setRemindersEnabled,
       addScheduledService: (service: ScheduledService) => {
-        setScheduledServices((current) => [service, ...current]);
+        const savedService = { ...service, vehicleId: service.vehicleId ?? activeVehicleId, status: service.status ?? 'Pending' as const };
+        setScheduledServices((current) => [savedService, ...current]);
         setHistoryItems((current) => [
           {
-            id: `${service.id}-history`,
-            title: service.title,
-            date: service.scheduledDate,
-            mileage: service.targetMileage,
+            id: `${savedService.id}-history`,
+            title: savedService.title,
+            date: savedService.scheduledDate,
+            mileage: savedService.targetMileage,
             status: 'Scheduled',
+            vehicleId: savedService.vehicleId,
           },
           ...current,
         ]);
+      },
+      updateScheduledService: (id: string, changes: Partial<ScheduledService>) => {
+        setScheduledServices((current) => current.map((service) => service.id === id ? { ...service, ...changes } : service));
+        setHistoryItems((current) => current.map((item) => item.id === `${id}-history` ? {
+          ...item,
+          title: changes.title ?? item.title,
+          date: changes.scheduledDate ?? item.date,
+          mileage: changes.targetMileage ?? item.mileage,
+          status: changes.status === 'Completed' ? 'Completed' : changes.status === 'In Progress' ? 'In Progress' : changes.status === 'Cancelled' ? 'Cancelled' : item.status === 'Completed' ? 'Completed' : 'Scheduled',
+        } : item));
       },
       removeScheduledService: (id: string) => {
         setScheduledServices((current) => current.filter((service) => service.id !== id));
@@ -266,16 +330,19 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       deleteHistoryItem: (id: string) => {
         setHistoryItems((current) => current.filter((item) => item.id !== id));
       },
-      clearHistoryItems: () => {
-        setHistoryItems([]);
+      clearHistoryItems: (vehicleId?: string) => {
+        setHistoryItems((current) => vehicleId ? current.filter((item) => item.vehicleId !== vehicleId) : []);
       },
       resetProfileSession: () => {
         setProfile(defaultProfile);
+        setVehicles([defaultProfile]);
+        setActiveVehicleId(defaultProfile.id);
+        setRemindersEnabled(true);
         setScheduledServices(defaultScheduledServices);
         setHistoryItems(defaultHistoryItems);
       },
     }),
-    [profile, scheduledServices, historyItems],
+    [profile, vehicles, activeVehicleId, remindersEnabled, scheduledServices, historyItems],
   );
 
   return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;

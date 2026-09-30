@@ -31,10 +31,18 @@ const colors = {
 
 export default function HomeScreen() {
   const navigate = useSafeNavigation(false);
-  const { profile, scheduledServices } = useProfile();
+  const { profile, activeVehicleId, remindersEnabled, scheduledServices, historyItems } = useProfile();
   const maintenanceItems = getMaintenanceRecommendations(profile.odometer);
   const nextMaintenance = maintenanceItems[0];
-  const nextScheduledService = scheduledServices[0];
+  const nextScheduledService = scheduledServices.find((service) => (!service.vehicleId || service.vehicleId === activeVehicleId) && service.status !== 'Cancelled' && service.status !== 'Completed');
+  const thisMonthSpend = historyItems
+    .filter((item) => (!item.vehicleId || item.vehicleId === activeVehicleId) && item.status === 'Completed' && (item.cost ?? 0) > 0)
+    .filter((item) => {
+      const date = new Date(item.date);
+      const today = new Date();
+      return !Number.isNaN(date.getTime()) && date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear();
+    })
+    .reduce((sum, item) => sum + (item.cost ?? 0), 0);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -47,7 +55,7 @@ export default function HomeScreen() {
               <Text style={styles.dashboardTitle}>Dashboard</Text>
               <View style={styles.statusPill}>
                 <View style={styles.statusDot} />
-                <Text style={styles.statusText}>All good</Text>
+              <Text style={styles.statusText}>{nextMaintenance?.status ?? 'On track'}</Text>
               </View>
             </View>
           </View>
@@ -64,7 +72,7 @@ export default function HomeScreen() {
             </View>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Open vehicle details"
+              accessibilityLabel="Update vehicle details and odometer"
               hitSlop={8}
               onPress={() => navigate('/profile')}
               style={({ pressed }) => [styles.heroBadge, pressed && styles.buttonPressed]}
@@ -83,16 +91,27 @@ export default function HomeScreen() {
             <View style={styles.statCard}>
               <Ionicons name="shield-checkmark-outline" size={17} color={colors.green} />
               <Text style={styles.statLabel}>Maintenance</Text>
-              <Text style={styles.statValue}>87%</Text>
-              <Text style={styles.statDetail}>On track</Text>
+              <Text style={styles.statValue}>{nextMaintenance?.status ?? 'On track'}</Text>
+              <Text style={styles.statDetail}>Service status</Text>
             </View>
             <View style={styles.statCard}>
               <Ionicons name="wallet-outline" size={17} color={colors.gold} />
               <Text style={styles.statLabel}>This month</Text>
-              <Text style={styles.statValue}>₱240</Text>
+              <Text style={styles.statValue}>₱{thisMonthSpend.toLocaleString()}</Text>
               <Text style={styles.statDetail}>Spent</Text>
             </View>
           </View>
+
+          {remindersEnabled && nextMaintenance && nextMaintenance.dueIn <= 3000 && (
+            <Pressable accessibilityRole="button" onPress={() => navigate('/schedule')} style={styles.reminderCard}>
+              <Ionicons name="notifications-outline" size={18} color={colors.gold} />
+              <View style={styles.reminderTextWrap}>
+                <Text style={styles.reminderTitle}>Maintenance reminder</Text>
+                <Text style={styles.reminderMessage}>{nextMaintenance.title} is due in {nextMaintenance.dueIn.toLocaleString()} km.</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+            </Pressable>
+          )}
 
           <View style={styles.summaryCard}>
             <View style={styles.summaryHeader}>
@@ -299,6 +318,10 @@ const styles = StyleSheet.create({
     gap: 9,
     marginBottom: 22,
   },
+  reminderCard: { alignItems: 'center', backgroundColor: 'rgba(242,188,57,0.1)', borderColor: 'rgba(242,188,57,0.25)', borderRadius: 12, borderWidth: 1, flexDirection: 'row', gap: 10, marginBottom: 10, padding: 12 },
+  reminderTextWrap: { flex: 1 },
+  reminderTitle: { color: colors.gold, fontSize: 12, fontWeight: '800' },
+  reminderMessage: { color: colors.softText, fontSize: 10, marginTop: 4 },
   statCard: {
     backgroundColor: colors.card,
     borderColor: colors.border,

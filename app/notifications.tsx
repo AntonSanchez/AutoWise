@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppHeader } from '@/components/app-header';
 import { getNextMaintenanceRecommendation, useProfile } from '@/components/profile-provider';
-import { useSafeNavigation } from '@/hooks/use-safe-navigation';
+import { useSafeBack, useSafeNavigation } from '@/hooks/use-safe-navigation';
 
 const colors = {
   background: '#171a1d',
@@ -21,34 +21,29 @@ const colors = {
 
 export default function NotificationsScreen() {
   const navigate = useSafeNavigation(false);
-  const { profile } = useProfile();
+  const goBack = useSafeBack();
+  const { profile, activeVehicleId, remindersEnabled, scheduledServices } = useProfile();
   const nextService = getNextMaintenanceRecommendation(profile.odometer);
+  const nextBooking = scheduledServices.find((service) => (!service.vehicleId || service.vehicleId === activeVehicleId) && service.status !== 'Cancelled' && service.status !== 'Completed');
   const notifications = [
-    {
+    ...(remindersEnabled && nextService.dueIn <= 3000 ? [{
       title: `${nextService.title} status: ${nextService.status}`,
       message: `Recommended action: ${nextService.action}. ${nextService.dueIn.toLocaleString()} km remaining until the next check window.`,
-      time: 'Today',
+      time: 'Maintenance reminder',
       icon: nextService.icon,
       tone: colors.gold,
       unread: true,
-    },
-    {
-      title: 'Vehicle profile is up to date',
-      message: 'Your vehicle information is ready across AutoWise.',
-      time: 'Yesterday',
-      icon: 'checkmark-circle-outline',
+    }] : []),
+    ...(nextBooking ? [{
+      title: `Booking ${nextBooking.status?.toLowerCase() ?? 'pending'}`,
+      message: `${nextBooking.title} is scheduled for ${nextBooking.scheduledDate}.`,
+      time: 'Upcoming booking',
+      icon: 'calendar-outline',
       tone: colors.green,
-      unread: false,
-    },
-    {
-      title: 'Inspection reminder',
-      message: `Use condition-based checks and inspect before reaching ${nextService.targetMileage.toLocaleString()} km.`,
-      time: '3 days ago',
-      icon: 'warning-outline',
-      tone: colors.red,
-      unread: false,
-    },
+      unread: nextBooking.status === 'Confirmed',
+    }] : []),
   ];
+  const unreadCount = notifications.filter((notification) => notification.unread).length;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -56,18 +51,29 @@ export default function NotificationsScreen() {
         <AppHeader />
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.titleRow}>
-            <View>
-              <Text style={styles.eyebrow}>AUTO WISE</Text>
-              <Text style={styles.title}>Notifications</Text>
-              <Text style={styles.subtitle}>Stay on top of {profile.vehicleName}.</Text>
+            <View style={styles.titleContent}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Go back to previous page"
+                hitSlop={8}
+                onPress={goBack}
+                style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+              >
+                <Ionicons name="arrow-back" size={21} color={colors.text} />
+              </Pressable>
+              <View style={styles.titleTextWrap}>
+                <Text style={styles.eyebrow}>AUTO WISE</Text>
+                <Text style={styles.title}>Notifications</Text>
+                <Text style={styles.subtitle}>Stay on top of {profile.vehicleName}.</Text>
+              </View>
             </View>
             <View style={styles.countBadge}>
-              <Text style={styles.countText}>1 new</Text>
+              <Text style={styles.countText}>{unreadCount} new</Text>
             </View>
           </View>
 
           <View style={styles.list}>
-            {notifications.map((notification) => (
+            {notifications.length === 0 ? <Text style={styles.emptyText}>No upcoming reminders or booking updates.</Text> : notifications.map((notification) => (
               <Pressable
                 key={notification.title}
                 style={({ pressed }) => [
@@ -111,10 +117,22 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { flexGrow: 1, padding: 18 },
   titleRow: {
-    alignItems: 'flex-start',
+    alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 22,
+  },
+  titleContent: { alignItems: 'center', flex: 1, flexDirection: 'row', marginRight: 12 },
+  titleTextWrap: { flex: 1 },
+  backButton: {
+    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    height: 40,
+    justifyContent: 'center',
+    marginRight: 12,
+    width: 40,
   },
   eyebrow: {
     color: colors.gold,
@@ -127,7 +145,7 @@ const styles = StyleSheet.create({
   title: {
     color: colors.text,
     fontFamily: 'Arial',
-    fontSize: 28,
+    fontSize: 18,
     fontWeight: '800',
   },
   subtitle: {
@@ -146,6 +164,7 @@ const styles = StyleSheet.create({
   },
   countText: { color: colors.gold, fontFamily: 'Arial', fontSize: 11, fontWeight: '800' },
   list: { gap: 11 },
+  emptyText: { color: colors.muted, fontFamily: 'Arial', fontSize: 13, paddingVertical: 28, textAlign: 'center' },
   notificationCard: {
     alignItems: 'center',
     backgroundColor: colors.card,
