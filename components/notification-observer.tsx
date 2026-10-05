@@ -1,12 +1,23 @@
-import * as Notifications from 'expo-notifications';
 import { useEffect, useRef } from 'react';
 
 import { useAuth } from '@/components/auth-provider';
 import { useSafeNavigation } from '@/hooks/use-safe-navigation';
+import { isNativeApp, loadNotificationsModule } from '@/lib/notifications';
 
-// Opens the right screen when someone taps a push notification (also when it launched the app).
-// Not rendered on web, where there are no push notifications.
+// Opens the right screen when someone taps a notification (push or local, also when it launched the app).
+// Renders nothing on the web.
 export function NotificationObserver() {
+  return isNativeApp ? <Observer /> : null;
+}
+
+function Observer() {
+  const Notifications = loadNotificationsModule();
+
+  // Only rendered when the module exists, so this never changes between renders.
+  return Notifications ? <ResponseHandler Notifications={Notifications} /> : null;
+}
+
+function ResponseHandler({ Notifications }: { Notifications: NonNullable<ReturnType<typeof loadNotificationsModule>> }) {
   const { isLoggedIn } = useAuth();
   const navigate = useSafeNavigation(false);
   const response = Notifications.useLastNotificationResponse();
@@ -31,7 +42,7 @@ export function NotificationObserver() {
     } else if (data.type === 'service' && data.carId) {
       navigate(`/car/${data.carId}`);
     }
-  }, [isLoggedIn, response, navigate]);
+  }, [Notifications, isLoggedIn, response, navigate]);
 
   return null;
 }

@@ -3,12 +3,13 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useMemo, useRef, type ReactNode } from 'react';
-import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { AuthProvider, useAuth } from '@/components/auth-provider';
 import { MessagesProvider } from '@/components/messages-provider';
 import { NotificationObserver } from '@/components/notification-observer';
+import { ServiceUpdateBanner } from '@/components/service-update-banner';
 import { ProfileProvider } from '@/components/profile-provider';
 import { ThemeProvider as AppThemeProvider, useAppTheme, type ThemeColors } from '@/components/theme-provider';
 
@@ -66,7 +67,8 @@ function ThemedRoot({ onLayout }: { onLayout: () => void }) {
     <NavigationThemeProvider value={navigationTheme}>
       <RootView onLayout={onLayout} style={styles.rootView}>
         <RootNavigator background={colors.background} />
-        {Platform.OS !== 'web' && <NotificationObserver />}
+        <NotificationObserver />
+        <ServiceUpdateBanner />
         <StatusBar style={isDark ? 'light' : 'dark'} />
       </RootView>
     </NavigationThemeProvider>

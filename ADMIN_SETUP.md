@@ -104,18 +104,29 @@ tabs at the bottom).
 - Devices register a token on sign-in (saved at `pushTokens/{uid}`, removed on sign-out). The sending
   app asks Expo's push service to deliver, so no server is needed.
 
-**Setup needed (push does nothing until this is done, and the app works normally without it):**
+**Expo Go on Android can't do remote push** (removed in SDK 53, still true in SDK 54), so Expo Go can't
+get a notification while the app is closed. What it does instead: when a mechanic accepts a booking and the
+customer's app is open (or recently in the background), the phone shows a normal system notification, or an
+in-app banner on the web or if notifications aren't allowed. The app never asks Expo Go for a push token, which
+is the call Expo blocks. Real push, including when the app is fully closed, needs a **development build**:
 
-1. `npm install` (the new `expo-notifications` package is already in `package.json`).
-2. Create an EAS project so Expo can issue push tokens: `npm i -g eas-cli`, `eas login`, `eas init`.
-   This adds a project id to `app.json`.
-3. **Android needs a development build.** Expo Go on Android can't receive remote push (Expo SDK 53+).
-   Add `expo-dev-client`, then `eas build --profile development --platform android`. Android also
-   needs Firebase Cloud Messaging credentials uploaded to EAS; follow Expo's guide at
-   https://docs.expo.dev/push-notifications/push-notifications-setup/.
-4. iPhones need Apple developer credentials for push on a real device.
-5. Test: sign in as a customer on one device and an approved mechanic on another, book a service, and
-   accept it as the mechanic.
+1. `npm install`
+2. `npm install -g eas-cli`, then `eas login`
+3. `npx expo install expo-dev-client`
+4. `eas init` (adds your EAS project id to `app.json`) and `eas build:configure` (creates `eas.json`
+   with a development profile)
+5. **Firebase for Android:** in the Firebase console add an Android app with package name
+   `com.kadong.AutoWise` (the one in `app.json`), download `google-services.json` into the project
+   root, and add `"googleServicesFile": "./google-services.json"` under `"android"` in `app.json`.
+6. **Send permission:** Firebase console → Project settings → Service accounts → Generate new private
+   key, then run `eas credentials`, choose Android → your profile → Google Service Account → FCM V1,
+   and upload that JSON (guide: https://docs.expo.dev/push-notifications/fcm-credentials/).
+7. Build and install the development app:
+   `eas build --profile development --platform android`, then install the APK it gives you.
+8. Run `npx expo start --dev-client` and open the project in that installed app instead of Expo Go.
+9. Test: customer on one device, approved mechanic on another, book a service, accept it.
+
+iPhones need Apple developer credentials for push on a real device (Expo Go on iOS can still receive it).
 
 Push limits: anyone who can read a user's token (approved mechanics, and people who share a chat with
 them) can send them a notification, because sending happens from the app. For a stricter setup,
