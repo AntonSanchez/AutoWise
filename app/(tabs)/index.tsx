@@ -9,13 +9,22 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppHeader } from '@/components/app-header';
+import { useAuth } from '@/components/auth-provider';
+import { MechanicDashboard } from '@/components/mechanic-dashboard';
 import { BottomNavigation } from '@/components/bottom-navigation';
 import { useProfile } from '@/components/profile-provider';
 import { useMemo } from 'react';
 import { useSafeNavigation } from '@/hooks/use-safe-navigation';
 import { useAppTheme, withAlpha, type ThemeColors } from '@/components/theme-provider';
 
+// Mechanics land on their job dashboard instead of the customer's garage dashboard.
 export default function HomeScreen() {
+  const { role } = useAuth();
+
+  return role === 'mechanic' ? <MechanicDashboard /> : <CustomerHome />;
+}
+
+function CustomerHome() {
   const navigate = useSafeNavigation(false);
   const { colors, isDark } = useAppTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);

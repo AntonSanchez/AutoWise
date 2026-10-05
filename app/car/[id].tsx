@@ -6,15 +6,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppHeader } from '@/components/app-header';
 import { BottomNavigation } from '@/components/bottom-navigation';
+import { useMessages } from '@/components/messages-provider';
 import { useProfile } from '@/components/profile-provider';
 import { type ThemeColors, useThemeColors, withAlpha } from '@/components/theme-provider';
 import { useSafeBack, useSafeNavigation } from '@/hooks/use-safe-navigation';
+import { getRequestType, getServiceStatus, getStatusLabel, type ServiceStatus } from '@/lib/service-status';
 
 export default function CarDetailScreen() {
   const goBack = useSafeBack();
   const navigate = useSafeNavigation(false);
   const { id } = useLocalSearchParams<{ id: string }>();
   const { cars, profile, scheduledServices, removeScheduledService, records, addRecord, deleteRecord, clearRecordsForCar } = useProfile();
+  const { startConversation } = useMessages();
+  const [messagingId, setMessagingId] = useState('');
+  const [chatError, setChatError] = useState('');
   const [activeTab, setActiveTab] = useState<'schedule' | 'records'>('schedule');
   const [removeTarget, setRemoveTarget] = useState<{ id: string; title: string } | null>(null);
   const [deleteRecordTarget, setDeleteRecordTarget] = useState<{ id: string; title: string } | null>(null);
@@ -28,6 +33,26 @@ export default function CarDetailScreen() {
   const car = cars.find((item) => item.id === id);
   const carServices = scheduledServices.filter((service) => service.carId === id);
   const carRecords = records.filter((record) => record.carId === id);
+
+  // Opens (or starts) the chat with the mechanic who accepted this booking.
+  const messageMechanic = async (service: { id: string; mechanicId?: string; mechanicName?: string }) => {
+    if (!service.mechanicId) {
+      return;
+    }
+
+    setMessagingId(service.id);
+    setChatError('');
+
+    try {
+      const conversationId = await startConversation({ uid: service.mechanicId, name: service.mechanicName || 'Mechanic', role: 'mechanic' });
+      navigate(`/message/${conversationId}`);
+    } catch (error) {
+      console.error('AutoWise: could not open chat', error);
+      setChatError("Couldn't open the chat. Check your connection and try again.");
+    } finally {
+      setMessagingId('');
+    }
+  };
 
   const confirmRemove = () => {
     if (!removeTarget) {
@@ -182,7 +207,13 @@ export default function CarDetailScreen() {
                 </View>
               )}
 
-              {carServices.map((service) => (
+              {chatError.length > 0 && <Text style={styles.chatError}>{chatError}</Text>}
+
+              {carServices.map((service) => {
+                const status = getServiceStatus(service);
+                const badgeColor = getStatusColor(status, colors);
+
+                return (
                 <View key={service.id} style={styles.protocolCard}>
                   <View style={styles.protocolRow}>
                     <View style={styles.protocolIconWrap}>
@@ -192,8 +223,8 @@ export default function CarDetailScreen() {
                       <Text style={styles.protocolTitle}>{service.title}</Text>
                       <Text style={styles.protocolSubtitle}>{service.vehicle}</Text>
                     </View>
-                    <View style={[styles.statusBadge, styles.bookedBadge]}>
-                      <Text style={[styles.statusBadgeText, { color: colors.blue }]}>BOOKED</Text>
+                    <View style={[styles.statusBadge, { backgroundColor: withAlpha(badgeColor, 0.14), borderColor: withAlpha(badgeColor, 0.38) }]}>
+                      <Text style={[styles.statusBadgeText, { color: badgeColor }]}>{getStatusLabel(status)}</Text>
                     </View>
                     <Pressable
                       accessibilityLabel={`Remove ${service.title} schedule`}
@@ -210,8 +241,27 @@ export default function CarDetailScreen() {
                     <Text style={styles.protocolMeta}>Date: {service.scheduledDate}</Text>
                     <Text style={styles.protocolMeta}>Time: {service.time}</Text>
                   </View>
+                  <View style={styles.protocolMetaRow}>
+                    <Text style={styles.protocolMeta}>{getRequestType(service) === 'checkup' ? 'Checkup' : 'Service'}</Text>
+                    <Text style={styles.protocolMeta}>
+                      {status === 'pending' ? 'Waiting for a mechanic' : `Mechanic: ${service.mechanicName || 'Assigned'}`}
+                    </Text>
+                  </View>
+                  {status !== 'pending' && service.mechanicId ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Message ${service.mechanicName || 'your mechanic'}`}
+                      disabled={messagingId === service.id}
+                      onPress={() => messageMechanic(service)}
+                      style={({ pressed }) => [styles.messageMechanicButton, (pressed || messagingId === service.id) && styles.removeButtonPressed]}
+                    >
+                      <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.gold} />
+                      <Text style={styles.messageMechanicText}>Message mechanic</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
-              ))}
+                );
+              })}
             </>
           ) : (
             <>
@@ -421,6 +471,12 @@ export default function CarDetailScreen() {
   );
 }
 
+function getStatusColor(status: ServiceStatus, colors: ThemeColors) {
+  if (status === 'completed') return colors.green;
+  if (status === 'pending') return colors.blue;
+  return colors.gold;
+}
+
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: colors.background },
@@ -495,6 +551,9 @@ function createStyles(colors: ThemeColors) {
     protocolTextWrap: { flex: 1, marginLeft: 10 },
     protocolTitle: { color: colors.text, flexShrink: 1, fontSize: 14, fontWeight: '700' },
     protocolSubtitle: { color: colors.muted, flexShrink: 1, fontSize: 10, marginTop: 3 },
+    messageMechanicButton: { alignItems: 'center', alignSelf: 'flex-start', backgroundColor: withAlpha(colors.gold, 0.12), borderRadius: 10, flexDirection: 'row', gap: 7, marginTop: 12, minHeight: 36, paddingHorizontal: 12 },
+    messageMechanicText: { color: colors.gold, fontSize: 12, fontWeight: '800' },
+    chatError: { color: colors.danger, fontSize: 12, fontWeight: '700', marginBottom: 10 },
     protocolMetaRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 10, rowGap: 5 },
     protocolMeta: { color: colors.muted, flexShrink: 1, fontSize: 10, marginRight: 8 },
     removeButton: { alignItems: 'center', flexShrink: 0, height: 32, justifyContent: 'center', marginLeft: 8, width: 32 },

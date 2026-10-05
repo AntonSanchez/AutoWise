@@ -1,12 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useAuth } from '@/components/auth-provider';
 import { useThemeColors, type ThemeColors } from '@/components/theme-provider';
 import { useSafeNavigation } from '@/hooks/use-safe-navigation';
 import { useMemo } from 'react';
 
 export function AppHeader() {
   const navigate = useSafeNavigation(false);
+  const { role } = useAuth();
+  const isMechanic = role === 'mechanic';
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -17,21 +20,23 @@ export function AppHeader() {
       </View>
 
       <View style={styles.actions}>
+        {!isMechanic && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Notifications"
+            hitSlop={10}
+            onPress={() => navigate('/notifications')}
+            style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+          >
+            <Ionicons name="notifications-outline" size={23} color={colors.text} />
+            <View style={styles.notificationDot} />
+          </Pressable>
+        )}
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Notifications"
-          hitSlop={10}
-          onPress={() => navigate('/notifications')}
-          style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-        >
-          <Ionicons name="notifications-outline" size={23} color={colors.text} />
-          <View style={styles.notificationDot} />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open vehicle profile"
+          accessibilityLabel={isMechanic ? 'Open mechanic account' : 'Open vehicle profile'}
           hitSlop={6}
-          onPress={() => navigate('/profile')}
+          onPress={() => navigate(isMechanic ? '/mechanic/account' : '/profile')}
           style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}
         >
           <Ionicons name="person" size={17} color={colors.dark} />

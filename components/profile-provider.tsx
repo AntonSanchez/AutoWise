@@ -59,6 +59,15 @@ export type ScheduledService = {
   time: string;
   scheduledDate: string;
   notes: string;
+  // Extra details so a mechanic can act on the request without reading the customer's profile.
+  // Older bookings don't have them: no status means 'pending', no requestType means 'service'.
+  requestType?: 'service' | 'checkup';
+  customerName?: string;
+  vehicleModel?: string;
+  // The mechanic's response. Only mechanics (and admins) can change these - see firestore.rules.
+  status?: 'pending' | 'accepted' | 'in_progress' | 'completed';
+  mechanicId?: string;
+  mechanicName?: string;
 };
 
 export type VehicleHistoryItem = {
@@ -373,12 +382,15 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
           status: 'Scheduled',
         };
 
-        setScheduledServices((current) => [service, ...current]);
+        // Every new booking starts out waiting for a mechanic to accept it.
+        const booking: ScheduledService = { ...service, status: 'pending' };
+
+        setScheduledServices((current) => [booking, ...current]);
         setHistoryItems((current) => [historyEntry, ...current]);
 
         if (uid) {
           const batch = writeBatch(db);
-          batch.set(doc(db, 'users', uid, 'scheduledServices', service.id), { ...service, createdAt: serverTimestamp() });
+          batch.set(doc(db, 'users', uid, 'scheduledServices', service.id), { ...booking, createdAt: serverTimestamp() });
           batch.set(doc(db, 'users', uid, 'history', historyEntry.id), { ...historyEntry, createdAt: serverTimestamp() });
           batch.commit().catch((error: FirestoreError) => console.error('AutoWise: failed to save scheduled service', error));
         }

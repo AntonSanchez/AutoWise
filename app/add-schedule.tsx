@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppHeader } from '@/components/app-header';
 import { BottomNavigation } from '@/components/bottom-navigation';
 import { getMaintenanceRecommendations, getNextMaintenanceRecommendation, useProfile } from '@/components/profile-provider';
+import { requestTypeOptions, type RequestType } from '@/lib/service-status';
 import { useSafeBack } from '@/hooks/use-safe-navigation';
 import { useThemeColors, withAlpha, type ThemeColors } from '@/components/theme-provider';
 import {
@@ -33,7 +34,7 @@ export default function AddScheduleScreen() {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { carId } = useLocalSearchParams<{ carId?: string }>();
-  const { cars, addScheduledService } = useProfile();
+  const { cars, profile, addScheduledService } = useProfile();
   const car = cars.find((item) => item.id === carId);
   const actionInProgress = useRef(false);
   const nextMaintenance = getNextMaintenanceRecommendation(car?.odometer ?? '0');
@@ -42,6 +43,7 @@ export default function AddScheduleScreen() {
   const [serviceTypeOpen, setServiceTypeOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [meridiem, setMeridiem] = useState<Meridiem>('AM');
+  const [requestType, setRequestType] = useState<RequestType>('service');
   const [serviceForm, setServiceForm] = useState({
     title: nextMaintenance.title,
     vehicle: car?.vehicleName ?? '',
@@ -133,6 +135,9 @@ export default function AddScheduleScreen() {
       time: formatTimeDisplay(serviceForm.time, meridiem),
       scheduledDate: serviceForm.scheduledDate.trim(),
       notes: serviceForm.notes.trim(),
+      requestType,
+      customerName: profile.ownerName,
+      vehicleModel: car?.vehicleModel ?? '',
     });
     goBack();
   };
@@ -159,6 +164,26 @@ export default function AddScheduleScreen() {
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.card}>
+            <Text style={styles.label}>Request</Text>
+            <View style={styles.timeRow}>
+              {requestTypeOptions.map((option) => {
+                const selected = requestType === option.value;
+
+                return (
+                  <Pressable
+                    key={option.value}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Request a ${option.label.toLowerCase()}`}
+                    accessibilityState={{ selected }}
+                    onPress={() => setRequestType(option.value)}
+                    style={({ pressed }) => [styles.requestTypeButton, selected && styles.meridiemSelected, pressed && styles.selectPressed]}
+                  >
+                    <Text style={[styles.meridiemText, selected && styles.meridiemTextSelected]}>{option.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
             <Text style={styles.label}>Service type</Text>
             <Pressable
               accessibilityLabel="Choose service type"
@@ -395,6 +420,16 @@ function createStyles(colors: ThemeColors) {
     justifyContent: 'center',
     minHeight: 46,
     width: 54,
+  },
+  requestTypeButton: {
+    alignItems: 'center',
+    backgroundColor: colors.cardAlt,
+    borderColor: colors.border,
+    borderRadius: 10,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 46,
   },
   meridiemSelected: {
     backgroundColor: colors.gold,

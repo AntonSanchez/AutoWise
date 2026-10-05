@@ -3,11 +3,12 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useMemo, useRef, type ReactNode } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { AuthProvider, useAuth } from '@/components/auth-provider';
 import { MessagesProvider } from '@/components/messages-provider';
+import { NotificationObserver } from '@/components/notification-observer';
 import { ProfileProvider } from '@/components/profile-provider';
 import { ThemeProvider as AppThemeProvider, useAppTheme, type ThemeColors } from '@/components/theme-provider';
 
@@ -65,6 +66,7 @@ function ThemedRoot({ onLayout }: { onLayout: () => void }) {
     <NavigationThemeProvider value={navigationTheme}>
       <RootView onLayout={onLayout} style={styles.rootView}>
         <RootNavigator background={colors.background} />
+        {Platform.OS !== 'web' && <NotificationObserver />}
         <StatusBar style={isDark ? 'light' : 'dark'} />
       </RootView>
     </NavigationThemeProvider>
@@ -72,7 +74,7 @@ function ThemedRoot({ onLayout }: { onLayout: () => void }) {
 }
 
 function RootNavigator({ background }: { background: string }) {
-  const { isLoggedIn, isInitializing } = useAuth();
+  const { isLoggedIn, isAdmin, role, isInitializing } = useAuth();
   const { colors } = useAppTheme();
 
   // Wait for Firebase to report whether a session is already saved on this device, so a
@@ -109,6 +111,18 @@ function RootNavigator({ background }: { background: string }) {
         <Stack.Screen name="message/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="add-car" options={{ headerShown: false }} />
         <Stack.Screen name="add-schedule" options={{ headerShown: false }} />
+      </Stack.Protected>
+      {/* Admin-only screens. This only hides them in the UI - firestore.rules is what really stops a
+          non-admin from reading or changing other users' data. */}
+      <Stack.Protected guard={isLoggedIn && isAdmin}>
+        <Stack.Screen name="admin/index" options={{ headerShown: false }} />
+        <Stack.Screen name="admin/user/[uid]" options={{ headerShown: false }} />
+        <Stack.Screen name="admin/car" options={{ headerShown: false }} />
+      </Stack.Protected>
+      {/* Mechanic-only screens. The mechanic's home is the same '/' route as the customer's - the
+          Home screen swaps in the mechanic dashboard when the account's role is 'mechanic'. */}
+      <Stack.Protected guard={isLoggedIn && role === 'mechanic'}>
+        <Stack.Screen name="mechanic/account" options={{ headerShown: false }} />
       </Stack.Protected>
       <Stack.Protected guard={!isLoggedIn}>
         <Stack.Screen name="loading" options={{ headerShown: false }} />

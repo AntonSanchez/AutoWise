@@ -4,16 +4,22 @@ import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, Vi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 
-import { useAuth } from '@/components/auth-provider';
+import { useAuth, type AccountRole } from '@/components/auth-provider';
 import { useThemeColors, withAlpha, type ThemeColors } from '@/components/theme-provider';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const roleOptions: { value: AccountRole; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { value: 'customer', label: 'Customer', icon: 'person-outline' },
+  { value: 'mechanic', label: 'Mechanic', icon: 'construct-outline' },
+];
+
 export default function AuthScreen() {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, resetPassword, sessionNotice, clearSessionNotice } = useAuth();
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [role, setRole] = useState<AccountRole>('customer');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,22 +29,35 @@ export default function AuthScreen() {
   const [rememberMe, setRememberMe] = useState(false);
   const [credentialsLoaded, setCredentialsLoaded] = useState(Platform.OS === 'web');
   const [feedback, setFeedback] = useState('');
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
     SecureStore.getItemAsync('autowise.rememberedCredentials')
       .then((saved) => {
         if (!saved) return;
-        const credentials = JSON.parse(saved) as { email?: string; password?: string };
+        const credentials = JSON.parse(saved) as { email?: string; password?: string; role?: AccountRole };
         if (credentials.email && credentials.password) {
           setEmail(credentials.email);
           setPassword(credentials.password);
           setRememberMe(true);
+          if (credentials.role === 'mechanic' || credentials.role === 'customer') {
+            setRole(credentials.role);
+          }
         }
       })
       .catch(() => {})
       .finally(() => setCredentialsLoaded(true));
   }, []);
+
+  // Shows why the app signed the user out on its own (e.g. an admin disabled the account).
+  useEffect(() => {
+    if (sessionNotice) {
+      setError(sessionNotice);
+      setSubmitting(false);
+      clearSessionNotice();
+    }
+  }, [sessionNotice, clearSessionNotice]);
 
   const handleSubmit = async () => {
     if (submitting) {
@@ -71,12 +90,12 @@ export default function AuthScreen() {
 
     try {
       if (isSignUp) {
-        await signUp(fullName, email, password);
+        await signUp(fullName, email, password, role);
       } else {
-        await signIn(email, password);
+        await signIn(email, password, role);
         if (Platform.OS !== 'web') {
           if (rememberMe) {
-            await SecureStore.setItemAsync('autowise.rememberedCredentials', JSON.stringify({ email: email.trim(), password }));
+            await SecureStore.setItemAsync('autowise.rememberedCredentials', JSON.stringify({ email: email.trim(), password, role }));
           } else {
             await SecureStore.deleteItemAsync('autowise.rememberedCredentials');
           }
@@ -88,6 +107,33 @@ export default function AuthScreen() {
       setSubmitting(false);
     }
   };
+
+  const handleForgotPassword = async () => {
+    if (resetting || submitting) {
+      return;
+    }
+
+    if (!emailPattern.test(email.trim())) {
+      setFeedback('');
+      setError('Enter your email address above, then tap "Forgot password?" again.');
+      return;
+    }
+
+    setError('');
+    setFeedback('');
+    setResetting(true);
+
+    try {
+      await resetPassword(email);
+      setFeedback(`If an account exists for ${email.trim()}, a password reset link is on its way. Check your inbox and spam folder.`);
+    } catch (resetError) {
+      setError(resetError instanceof Error ? resetError.message : 'Could not send the reset email. Please try again.');
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const isMechanic = role === 'mechanic';
 
   const toggleMode = () => {
     setError('');
@@ -108,8 +154,39 @@ export default function AuthScreen() {
         <View style={styles.card}>
           <Text style={styles.title}>{isSignUp ? 'Create your account' : `${getGreeting()}, welcome back`}</Text>
           <Text style={styles.subtitle}>
-            {isSignUp ? 'Sign up to keep your vehicle maintenance organized.' : 'Sign in to continue to your garage.'}
+            {isSignUp
+              ? isMechanic
+                ? 'Sign up as a mechanic. An administrator approves your account before you can accept jobs.'
+                : 'Sign up to keep your vehicle maintenance organized.'
+              : isMechanic
+                ? 'Sign in to view and accept service and checkup requests.'
+                : 'Sign in to continue to your garage.'}
           </Text>
+
+          <Text style={styles.label}>{isSignUp ? 'I AM A' : 'SIGN IN AS'}</Text>
+          <View style={styles.roleRow}>
+            {roleOptions.map((option) => {
+              const selected = role === option.value;
+
+              return (
+                <Pressable
+                  key={option.value}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${option.label} account`}
+                  accessibilityState={{ selected, disabled: submitting }}
+                  disabled={submitting}
+                  onPress={() => {
+                    setError('');
+                    setRole(option.value);
+                  }}
+                  style={({ pressed }) => [styles.roleButton, selected && styles.roleButtonSelected, pressed && styles.pressed]}
+                >
+                  <Ionicons name={option.icon} size={18} color={selected ? colors.background : colors.muted} />
+                  <Text style={[styles.roleText, selected && styles.roleTextSelected]}>{option.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
           {isSignUp && (
             <>
               <Text style={styles.label}>FULL NAME</Text>
@@ -164,18 +241,31 @@ export default function AuthScreen() {
 
           {!isSignUp && (
             <>
-              {Platform.OS !== 'web' && (
-                <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: rememberMe, disabled: !credentialsLoaded }} disabled={!credentialsLoaded} onPress={() => setRememberMe((value) => !value)} style={styles.rememberRow}>
-                  <Ionicons name={rememberMe ? 'checkbox' : 'square-outline'} size={19} color={rememberMe ? colors.gold : colors.muted} />
-                  <Text style={styles.rememberText}>Remember me</Text>
+              <View style={styles.optionsRow}>
+                {Platform.OS !== 'web' ? (
+                  <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: rememberMe, disabled: !credentialsLoaded }} disabled={!credentialsLoaded} onPress={() => setRememberMe((value) => !value)} style={styles.rememberRow}>
+                    <Ionicons name={rememberMe ? 'checkbox' : 'square-outline'} size={19} color={rememberMe ? colors.gold : colors.muted} />
+                    <Text style={styles.rememberText}>Remember me</Text>
+                  </Pressable>
+                ) : (
+                  <View />
+                )}
+                <Pressable accessibilityRole="button" disabled={resetting || submitting} onPress={handleForgotPassword} style={styles.forgotButton}>
+                  {resetting ? <ActivityIndicator size="small" color={colors.gold} /> : <Text style={styles.forgotText}>Forgot password?</Text>}
                 </Pressable>
-              )}
+              </View>
             </>
           )}
 
           {error.length > 0 && (
             <Text accessibilityLiveRegion="polite" style={styles.errorText}>
               {error}
+            </Text>
+          )}
+
+          {feedback.length > 0 && (
+            <Text accessibilityLiveRegion="polite" style={styles.feedbackText}>
+              {feedback}
             </Text>
           )}
 
@@ -221,7 +311,16 @@ function createStyles(colors: ThemeColors) {
   passwordRow: { alignItems: 'center', backgroundColor: colors.cardAlt, borderColor: colors.border, borderRadius: 11, borderWidth: 1, flexDirection: 'row', minHeight: 48 },
   passwordInput: { color: colors.text, flex: 1, fontSize: 14, minHeight: 46, paddingHorizontal: 13 },
   passwordToggle: { alignItems: 'center', justifyContent: 'center', minHeight: 46, paddingHorizontal: 13 },
-  rememberRow: { alignItems: 'center', alignSelf: 'flex-start', flexDirection: 'row', gap: 8, marginTop: 14, paddingVertical: 3 },
+  roleRow: { flexDirection: 'row', gap: 10 },
+  roleButton: { alignItems: 'center', backgroundColor: colors.cardAlt, borderColor: colors.border, borderRadius: 11, borderWidth: 1, flex: 1, flexDirection: 'row', gap: 8, justifyContent: 'center', minHeight: 46 },
+  roleButtonSelected: { backgroundColor: colors.gold, borderColor: colors.gold },
+  roleText: { color: colors.muted, fontSize: 13, fontWeight: '800' },
+  roleTextSelected: { color: colors.background },
+  optionsRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: 14 },
+  rememberRow: { alignItems: 'center', alignSelf: 'flex-start', flexDirection: 'row', gap: 8, paddingVertical: 3 },
+  forgotButton: { minHeight: 26, justifyContent: 'center', paddingVertical: 3 },
+  forgotText: { color: colors.gold, fontSize: 12, fontWeight: '700' },
+  feedbackText: { color: colors.gold, fontSize: 12, lineHeight: 17, marginTop: 16 },
   rememberText: { color: colors.muted, fontSize: 12 },
   errorText: { color: colors.danger, fontSize: 12, lineHeight: 17, marginTop: 16 },
   primaryButton: { alignItems: 'center', backgroundColor: colors.gold, borderRadius: 12, flexDirection: 'row', justifyContent: 'center', marginTop: 24, minHeight: 52, gap: 8 },

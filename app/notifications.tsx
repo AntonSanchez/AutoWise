@@ -7,15 +7,47 @@ import { getNextMaintenanceRecommendation, useProfile } from '@/components/profi
 import { useMemo } from 'react';
 import { useSafeNavigation } from '@/hooks/use-safe-navigation';
 import { useThemeColors, withAlpha, type ThemeColors } from '@/components/theme-provider';
+import { getRequestType, getServiceStatus } from '@/lib/service-status';
+
+type NotificationItem = {
+  title: string;
+  message: string;
+  time: string;
+  icon: string;
+  tone: string;
+  unread: boolean;
+  carId?: string;
+};
 
 export default function NotificationsScreen() {
   const navigate = useSafeNavigation(false);
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { cars, profile } = useProfile();
+  const { cars, profile, scheduledServices } = useProfile();
   const primaryCar = cars.find((car) => car.id === profile.primaryCarId) ?? cars[0];
   const nextService = getNextMaintenanceRecommendation(primaryCar?.odometer ?? '0');
-  const notifications = [
+  // Real updates from mechanics on this customer's bookings (accepted, started, finished).
+  const serviceUpdates: NotificationItem[] = scheduledServices
+    .filter((service) => getServiceStatus(service) !== 'pending')
+    .map((service) => {
+      const status = getServiceStatus(service);
+      const kind = getRequestType(service) === 'checkup' ? 'Checkup' : 'Service';
+      const verb = status === 'completed' ? 'completed' : status === 'in_progress' ? 'in progress' : 'accepted';
+
+      return {
+        title: `${kind} ${verb}: ${service.title}`,
+        message: `${service.mechanicName || 'A mechanic'} ${
+          status === 'completed' ? 'finished' : status === 'in_progress' ? 'started work on' : 'accepted'
+        } your ${kind.toLowerCase()} for ${service.vehicle} on ${service.scheduledDate} at ${service.time}.`,
+        time: service.scheduledDate,
+        icon: status === 'completed' ? 'checkmark-done-outline' : 'construct-outline',
+        tone: status === 'completed' ? colors.green : colors.gold,
+        unread: status !== 'completed',
+        carId: service.carId,
+      };
+    });
+  const notifications: NotificationItem[] = [
+    ...serviceUpdates,
     {
       title: `${nextService.title} status: ${nextService.status}`,
       message: `Recommended action: ${nextService.action}. ${nextService.dueIn.toLocaleString()} km remaining until the next check window.`,
@@ -54,20 +86,20 @@ export default function NotificationsScreen() {
               <Text style={styles.subtitle}>Stay on top of {primaryCar?.vehicleName ?? 'your vehicles'}.</Text>
             </View>
             <View style={styles.countBadge}>
-              <Text style={styles.countText}>1 new</Text>
+              <Text style={styles.countText}>{notifications.filter((item) => item.unread).length} new</Text>
             </View>
           </View>
 
           <View style={styles.list}>
-            {notifications.map((notification) => (
+            {notifications.map((notification, index) => (
               <Pressable
-                key={notification.title}
+                key={`${notification.title}-${index}`}
                 style={({ pressed }) => [
                   styles.notificationCard,
                   notification.unread && styles.unreadCard,
                   pressed && styles.pressed,
                 ]}
-                onPress={() => navigate(primaryCar ? `/car/${primaryCar.id}` : '/cars')}
+                onPress={() => navigate(notification.carId ? `/car/${notification.carId}` : primaryCar ? `/car/${primaryCar.id}` : '/cars')}
               >
                 <View style={[styles.iconWrap, { backgroundColor: `${notification.tone}1f` }]}>
                   <Ionicons name={notification.icon as any} size={21} color={notification.tone} />

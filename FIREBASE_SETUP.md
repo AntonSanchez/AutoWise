@@ -84,8 +84,8 @@ what `firestore.rules` does.
 
 ## Known limits
 
-- No Google/Apple sign-in, password reset, or email verification yet - email/password
-  only.
+- No Google/Apple sign-in or email verification yet - email/password only.
+- Admin accounts (manage all users and their cars) are set up by hand - see `ADMIN_SETUP.md`.
 - No offline queue: if a write fails (e.g. no network), it's only logged to the
   console right now, not retried or shown to the user.
 - Profile pictures are shrunk to 240px and compressed before saving, so they'll look

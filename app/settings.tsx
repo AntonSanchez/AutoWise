@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-nat
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppHeader } from '@/components/app-header';
+import { useAuth } from '@/components/auth-provider';
 import { BottomNavigation } from '@/components/bottom-navigation';
 import { useProfile } from '@/components/profile-provider';
 import { accentOptions, useAppTheme, useThemeColors, withAlpha, type ThemeColors } from '@/components/theme-provider';
@@ -13,6 +14,7 @@ export default function SettingsScreen() {
   const goBack = useSafeBack();
   const navigate = useSafeNavigation(false);
   const { profile } = useProfile();
+  const { isAdmin } = useAuth();
   const { isDark, toggleMode, accentKey, setAccentKey } = useAppTheme();
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -50,6 +52,24 @@ export default function SettingsScreen() {
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.muted} />
           </Pressable>
+
+          {isAdmin && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open administration"
+              onPress={() => navigate('/admin')}
+              style={({ pressed }) => [styles.profileCard, pressed && styles.buttonPressed]}
+            >
+              <View style={styles.profileIconWrap}>
+                <Ionicons name="shield-checkmark" size={20} color={colors.gold} />
+              </View>
+              <View style={styles.profileTextWrap}>
+                <Text style={styles.profileName}>Administration</Text>
+                <Text style={styles.profileMeta}>Manage accounts and their cars</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+            </Pressable>
+          )}
 
           <Text style={styles.sectionTitle}>Appearance</Text>
 

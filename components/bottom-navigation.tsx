@@ -3,21 +3,33 @@ import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-na
 
 import { useMemo } from 'react';
 import { useSafeNavigation } from '@/hooks/use-safe-navigation';
+import { useAuth } from '@/components/auth-provider';
+import { useMessages } from '@/components/messages-provider';
 import { useThemeColors, type ThemeColors } from '@/components/theme-provider';
 
-const navItems = [
+const customerItems = [
   { label: 'Home', icon: 'home', route: '/(tabs)' },
   { label: 'Cars', icon: 'car', route: '/cars' },
   { label: 'Messages', icon: 'chatbubble', route: '/messages' },
   { label: 'Settings', icon: 'settings', route: '/settings' },
 ] as const;
 
+// Mechanics have no garage or customer settings; their tabs are the job dashboard, chats and account.
+const mechanicItems = [
+  { label: 'Home', icon: 'home', route: '/(tabs)' },
+  { label: 'Messages', icon: 'chatbubble', route: '/messages' },
+  { label: 'Account', icon: 'person', route: '/mechanic/account' },
+] as const;
+
 type BottomNavigationProps = {
-  activeRoute: (typeof navItems)[number]['route'] | '/history';
+  activeRoute: string;
 };
 
 export function BottomNavigation({ activeRoute }: BottomNavigationProps) {
   const navigate = useSafeNavigation();
+  const { role } = useAuth();
+  const { unreadCount } = useMessages();
+  const navItems = role === 'mechanic' ? mechanicItems : customerItems;
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { width } = useWindowDimensions();
@@ -37,7 +49,14 @@ export function BottomNavigation({ activeRoute }: BottomNavigationProps) {
             style={({ pressed }) => [styles.tabButton, compact && styles.compactTabButton, pressed && styles.tabButtonPressed]}
             onPress={() => navigate(item.route)}
           >
-            <Ionicons name={item.icon as any} size={19} color={isActive ? colors.gold : colors.muted} />
+            <View>
+              <Ionicons name={item.icon as any} size={19} color={isActive ? colors.gold : colors.muted} />
+              {item.route === '/messages' && unreadCount > 0 && (
+                <View style={styles.unreadBadge}>
+                  <Text style={styles.unreadBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                </View>
+              )}
+            </View>
             <Text style={[styles.tabLabel, compact && styles.compactTabLabel, isActive && styles.activeTabLabel]}>{item.label}</Text>
           </Pressable>
         );
@@ -84,6 +103,23 @@ function createStyles(colors: ThemeColors) {
   },
   activeTabLabel: {
     color: colors.gold,
+  },
+  unreadBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.danger,
+    borderRadius: 8,
+    height: 16,
+    justifyContent: 'center',
+    minWidth: 16,
+    paddingHorizontal: 3,
+    position: 'absolute',
+    right: -9,
+    top: -7,
+  },
+  unreadBadgeText: {
+    color: colors.dark,
+    fontSize: 9,
+    fontWeight: '900',
   },
   });
 }
