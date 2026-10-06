@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppHeader } from '@/components/app-header';
@@ -27,6 +27,15 @@ export default function MessageThreadScreen() {
       markRead(id);
     }
   }, [id, unread, messages.length, markRead]);
+
+  // Keep the newest message in view when the keyboard opens.
+  useEffect(() => {
+    const subscription = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => {
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   const handleSend = () => {
     if (!conversation || draft.trim().length === 0) {
@@ -62,7 +71,7 @@ export default function MessageThreadScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.container} behavior="padding">
         <AppHeader />
         <View style={styles.headerRow}>
           <Pressable accessibilityLabel="Go back" accessibilityRole="button" hitSlop={8} onPress={goBack} style={({ pressed }) => [styles.backButton, pressed && styles.buttonPressed]}>
@@ -114,6 +123,19 @@ export default function MessageThreadScreen() {
             placeholderTextColor={colors.muted}
             maxLength={2000}
             multiline
+            returnKeyType="send"
+            // Enter sends (and keeps the keyboard open). On phones this is submitBehavior; on the web
+            // Enter sends and Shift+Enter starts a new line.
+            submitBehavior="submit"
+            onSubmitEditing={handleSend}
+            onKeyPress={(event) => {
+              const key = event as unknown as { key?: string; shiftKey?: boolean; preventDefault?: () => void; nativeEvent?: { isComposing?: boolean } };
+
+              if (Platform.OS === 'web' && key.key === 'Enter' && !key.shiftKey && !key.nativeEvent?.isComposing) {
+                key.preventDefault?.();
+                handleSend();
+              }
+            }}
           />
           <Pressable
             accessibilityRole="button"

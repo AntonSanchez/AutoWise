@@ -200,7 +200,7 @@ export default function AdminUserScreen() {
       confirmLabel: 'Delete',
       destructive: true,
       icon: 'trash-outline',
-      action: () => deleteAccountData(uid),
+      action: () => deleteAccountData(uid, account?.email),
       success: 'Account data deleted and the account disabled.',
       failure: 'Could not delete the account data',
     });
