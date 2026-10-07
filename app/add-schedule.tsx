@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppHeader } from '@/components/app-header';
 import { BottomNavigation } from '@/components/bottom-navigation';
 import { getMaintenanceRecommendations, getNextMaintenanceRecommendation, useProfile } from '@/components/profile-provider';
-import { requestTypeOptions, type RequestType } from '@/lib/service-status';
+import { CHECKUP_FEE, formatFee, requestTypeOptions, type RequestType } from '@/lib/service-status';
 import { useSafeBack } from '@/hooks/use-safe-navigation';
 import { useThemeColors, withAlpha, type ThemeColors } from '@/components/theme-provider';
 import {
@@ -33,8 +33,12 @@ export default function AddScheduleScreen() {
   const goBack = useSafeBack();
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { carId } = useLocalSearchParams<{ carId?: string }>();
-  const { cars, profile, addScheduledService } = useProfile();
+  const { carId: carIdParam, serviceId } = useLocalSearchParams<{ carId?: string; serviceId?: string }>();
+  const { cars, profile, scheduledServices, addScheduledService, updateScheduledService } = useProfile();
+  const editingService = serviceId ? scheduledServices.find((item) => item.id === serviceId) : undefined;
+  const isEditing = editingService !== undefined;
+  const carId = carIdParam ?? editingService?.carId;
+  const existingTime = /^(\d{1,2}:\d{2}) (AM|PM)$/.exec(editingService?.time ?? '');
   const car = cars.find((item) => item.id === carId);
   const actionInProgress = useRef(false);
   const nextMaintenance = getNextMaintenanceRecommendation(car?.odometer ?? '0');
@@ -42,14 +46,15 @@ export default function AddScheduleScreen() {
   const [validationError, setValidationError] = useState('');
   const [serviceTypeOpen, setServiceTypeOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [meridiem, setMeridiem] = useState<Meridiem>('AM');
-  const [requestType, setRequestType] = useState<RequestType>('service');
+  const [meridiem, setMeridiem] = useState<Meridiem>(existingTime?.[2] === 'PM' ? 'PM' : 'AM');
+  const [requestType, setRequestType] = useState<RequestType>(editingService?.requestType ?? 'service');
+  const [fee, setFee] = useState(editingService?.requestType !== 'checkup' && editingService?.fee ? String(editingService.fee) : '');
   const [serviceForm, setServiceForm] = useState({
-    title: nextMaintenance.title,
-    vehicle: car?.vehicleName ?? '',
-    time: '',
-    scheduledDate: '',
-    notes: `${nextMaintenance.action}. ${nextMaintenance.replacementNote ?? 'Recommendation based on mileage and vehicle condition.'}`,
+    title: editingService?.title ?? nextMaintenance.title,
+    vehicle: editingService?.vehicle ?? car?.vehicleName ?? '',
+    time: existingTime?.[1] ?? '',
+    scheduledDate: editingService?.scheduledDate ?? '',
+    notes: editingService?.notes ?? `${nextMaintenance.action}. ${nextMaintenance.replacementNote ?? 'Recommendation based on mileage and vehicle condition.'}`,
   });
 
   const requiredFields = [
@@ -125,8 +130,30 @@ export default function AddScheduleScreen() {
       return;
     }
 
+    // Checkups are always the flat fee; for services the customer picks the amount.
+    const feeAmount = requestType === 'checkup' ? CHECKUP_FEE : Number(fee.replace(/,/g, ''));
+
+    if (!Number.isFinite(feeAmount) || feeAmount <= 0 || feeAmount > 1000000) {
+      setValidationError('Enter how much you want to pay for this service (more than 0).');
+      return;
+    }
+
     actionInProgress.current = true;
     setSaving(true);
+    if (isEditing && editingService) {
+      updateScheduledService(editingService.id, {
+        title: serviceForm.title.trim(),
+        vehicle: serviceForm.vehicle.trim(),
+        time: formatTimeDisplay(serviceForm.time, meridiem),
+        scheduledDate: serviceForm.scheduledDate.trim(),
+        notes: serviceForm.notes.trim(),
+        requestType,
+        fee: feeAmount,
+      });
+      goBack();
+      return;
+    }
+
     addScheduledService({
       id: `${Date.now()}`,
       carId,
@@ -138,6 +165,7 @@ export default function AddScheduleScreen() {
       requestType,
       customerName: profile.ownerName,
       vehicleModel: car?.vehicleModel ?? '',
+      fee: feeAmount,
     });
     goBack();
   };
@@ -159,7 +187,7 @@ export default function AddScheduleScreen() {
           >
             <Ionicons name="arrow-back" size={22} color={colors.white} />
           </Pressable>
-          <Text style={styles.headerTitle}>Add Schedule</Text>
+          <Text style={styles.headerTitle}>{isEditing ? 'Edit Schedule' : 'Add Schedule'}</Text>
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -249,6 +277,28 @@ export default function AddScheduleScreen() {
               placeholderTextColor={colors.muted}
             />
 
+            <Text style={styles.label}>Fee</Text>
+            {requestType === 'checkup' ? (
+              <View style={[styles.input, styles.selectInput]}>
+                <Text style={styles.selectText}>{formatFee(CHECKUP_FEE)} (flat checkup fee)</Text>
+                <Ionicons name="lock-closed-outline" size={16} color={colors.muted} />
+              </View>
+            ) : (
+              <TextInput
+                style={styles.input}
+                value={fee}
+                onChangeText={(value) => {
+                  setValidationError('');
+                  setFee(value.replace(/[^0-9.]/g, ''));
+                }}
+                keyboardType="decimal-pad"
+                inputMode="decimal"
+                maxLength={9}
+                placeholder="Amount in pesos, e.g. 500"
+                placeholderTextColor={colors.muted}
+              />
+            )}
+
             <Text style={styles.label}>Notes</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
@@ -265,7 +315,7 @@ export default function AddScheduleScreen() {
             style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
             onPress={handleSave}
           >
-            {saving ? <ActivityIndicator color={colors.dark} /> : <Text style={styles.primaryButtonText}>Save Schedule</Text>}
+            {saving ? <ActivityIndicator color={colors.dark} /> : <Text style={styles.primaryButtonText}>{isEditing ? 'Save Changes' : 'Save Schedule'}</Text>}
           </Pressable>
           {validationError && (
             <Text style={styles.requiredError}>{validationError}</Text>

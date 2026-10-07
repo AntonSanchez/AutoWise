@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -62,7 +63,11 @@ export default function CarsScreen() {
               style={({ pressed }) => [styles.carCard, pressed && styles.carCardPressed]}
             >
               <View style={styles.carIconWrap}>
-                <Ionicons name="car-sport" size={22} color={colors.gold} />
+                {car.photoUri ? (
+                  <Image source={{ uri: car.photoUri }} style={styles.carPhoto} contentFit="cover" />
+                ) : (
+                  <Ionicons name="car-sport" size={22} color={colors.gold} />
+                )}
               </View>
               <View style={styles.carTextWrap}>
                 <View style={styles.carTitleRow}>
@@ -199,11 +204,13 @@ function createStyles(colors: ThemeColors) {
       alignItems: 'center',
       backgroundColor: withAlpha(colors.gold, 0.12),
       borderRadius: 12,
-      height: 42,
+      height: 52,
       justifyContent: 'center',
       marginRight: 12,
-      width: 42,
+      overflow: 'hidden',
+      width: 52,
     },
+    carPhoto: { height: '100%', width: '100%' },
     carTextWrap: { flex: 1, minWidth: 0 },
     carTitleRow: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
     primaryBadge: {

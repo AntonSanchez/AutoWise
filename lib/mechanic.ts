@@ -12,6 +12,7 @@ import {
 import type { ScheduledService } from '@/components/profile-provider';
 import { db } from '@/lib/firebase';
 import { sendPush } from '@/lib/notifications';
+import { formatFee } from '@/lib/service-status';
 
 // Everything in here only works for approved mechanics: firestore.rules is what enforces that.
 // Anyone else calling these just gets "permission denied" from Firestore.
@@ -93,8 +94,58 @@ export function startRequest(request: ServiceRequest) {
   return respond(request, { status: 'in_progress' }, 'In Progress');
 }
 
-export function completeRequest(request: ServiceRequest) {
-  return respond(request, { status: 'completed', completedAt: serverTimestamp() }, 'Completed');
+// Marks the job done and automatically logs it in the customer's Records for that car
+// (users/{customerId}/records/{serviceId}-record), so nobody has to type it in by hand.
+export async function completeRequest(request: ServiceRequest, mechanicName?: string) {
+  const customerRef = (name: string, id: string) => doc(db, 'users', request.customerId, name, id);
+  const serviceRef = customerRef('scheduledServices', request.id);
+  const kind = request.requestType === 'checkup' ? 'Checkup' : 'Service';
+  const now = new Date();
+  const completedOn = `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}/${now.getFullYear()}`;
+  const fee = formatFee(request.fee);
+  const by = mechanicName || request.mechanicName || 'a mechanic';
+  const record = {
+    id: `${request.id}-record`,
+    carId: request.carId,
+    title: `${request.title} (${kind})`,
+    value: fee ? `Fee ${fee}` : `Completed ${completedOn}`,
+    detail: `${kind} completed by ${by} on ${completedOn} for ${request.vehicle}. It was booked for ${request.scheduledDate} at ${request.time}.${fee ? ` Fee: ${fee}.` : ''}`,
+    source: 'mechanic',
+    createdAt: serverTimestamp(),
+  };
+  const changes = { status: 'completed', completedAt: serverTimestamp() };
+
+  // Best case: booking + History entry + Record in one go. If the customer deleted the History
+  // entry (or the Record already exists) that batch is refused, so fall back to smaller ones and
+  // finally to the booking alone, which must always succeed for the mechanic.
+  const attempts: ((batch: ReturnType<typeof writeBatch>) => void)[] = [
+    (batch) => {
+      batch.update(serviceRef, changes);
+      batch.update(customerRef('history', `${request.id}-history`), { status: 'Completed' });
+      batch.set(customerRef('records', record.id), record);
+    },
+    (batch) => {
+      batch.update(serviceRef, changes);
+      batch.set(customerRef('records', record.id), record);
+    },
+    (batch) => {
+      batch.update(serviceRef, changes);
+      batch.update(customerRef('history', `${request.id}-history`), { status: 'Completed' });
+    },
+  ];
+
+  for (const build of attempts) {
+    try {
+      const batch = writeBatch(db);
+      build(batch);
+      await batch.commit();
+      return;
+    } catch {
+      // try the next, smaller attempt
+    }
+  }
+
+  await updateDoc(serviceRef, changes);
 }
 
 // Hands a job back so another mechanic can take it.

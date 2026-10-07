@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Avatar } from '@/components/avatar';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -200,7 +201,7 @@ export default function AdminUserScreen() {
       confirmLabel: 'Delete',
       destructive: true,
       icon: 'trash-outline',
-      action: () => deleteAccountData(uid),
+      action: () => deleteAccountData(uid, account?.email),
       success: 'Account data deleted and the account disabled.',
       failure: 'Could not delete the account data',
     });
@@ -262,9 +263,13 @@ export default function AdminUserScreen() {
             <>
               <View style={styles.card}>
                 <View style={styles.accountHeader}>
-                  <View style={styles.avatar}>
-                    <Ionicons name={isTargetAdmin ? 'shield-checkmark' : account.role === 'mechanic' ? 'construct' : 'person'} size={22} color={colors.gold} />
-                  </View>
+                  <Avatar
+                    uri={account.avatarUri}
+                    size={46}
+                    radius={14}
+                    icon={isTargetAdmin ? 'shield-checkmark' : account.role === 'mechanic' ? 'construct' : 'person'}
+                    style={styles.avatar}
+                  />
                   <View style={styles.accountHeaderText}>
                     <Text style={styles.accountName}>{account.ownerName || 'Unnamed account'}</Text>
                     <View style={styles.statusRow}>
@@ -375,9 +380,7 @@ export default function AdminUserScreen() {
 
               {cars.map((car) => (
                 <View key={car.id} style={styles.carCard}>
-                  <View style={styles.carIconWrap}>
-                    <Ionicons name="car-sport" size={21} color={colors.gold} />
-                  </View>
+                  <Avatar uri={car.photoUri} size={40} radius={12} icon="car-sport" style={styles.carIconWrap} />
                   <View style={styles.carTextWrap}>
                     <View style={styles.carTitleRow}>
                       <Text numberOfLines={2} style={styles.carTitle}>
@@ -555,7 +558,7 @@ function createStyles(colors: ThemeColors) {
     noticeText: { flex: 1, fontSize: 12, fontWeight: '700', lineHeight: 17 },
     card: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 16, borderWidth: 1, marginBottom: 20, padding: 16 },
     accountHeader: { alignItems: 'center', flexDirection: 'row', marginBottom: 6 },
-    avatar: { alignItems: 'center', backgroundColor: withAlpha(colors.gold, 0.12), borderRadius: 14, height: 46, justifyContent: 'center', marginRight: 12, width: 46 },
+    avatar: { marginRight: 12 },
     accountHeaderText: { flex: 1 },
     accountName: { color: colors.text, fontSize: 17, fontWeight: '800' },
     statusRow: { alignItems: 'center', flexDirection: 'row', gap: 6, marginTop: 4 },
@@ -578,7 +581,7 @@ function createStyles(colors: ThemeColors) {
     addButton: { alignItems: 'center', backgroundColor: colors.gold, borderRadius: 10, flexDirection: 'row', gap: 4, minHeight: 34, paddingHorizontal: 12 },
     addButtonText: { color: colors.dark, fontSize: 12, fontWeight: '800' },
     carCard: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 14, borderWidth: 1, flexDirection: 'row', marginBottom: 10, padding: 14 },
-    carIconWrap: { alignItems: 'center', backgroundColor: withAlpha(colors.gold, 0.12), borderRadius: 12, height: 40, justifyContent: 'center', marginRight: 12, width: 40 },
+    carIconWrap: { marginRight: 12 },
     carTextWrap: { flex: 1, marginRight: 4 },
     carTitleRow: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
     carTitle: { color: colors.text, flexShrink: 1, fontSize: 14, fontWeight: '800' },

@@ -19,6 +19,7 @@ import {
 } from 'firebase/firestore';
 
 import type { Car } from '@/components/profile-provider';
+import { removeEmail } from '@/lib/directory';
 import { auth, db } from '@/lib/firebase';
 
 // Everything in here only works for signed-in admins: firestore.rules is what enforces that.
@@ -162,7 +163,7 @@ export async function deleteUserCar(uid: string, carId: string, isPrimary: boole
 // The Firebase Authentication login itself can't be removed from inside the app - that needs the
 // Firebase console or a Cloud Function - so the profile is kept, flagged as deleted and disabled,
 // which stops that login from getting back into the app.
-export async function deleteAccountData(uid: string) {
+export async function deleteAccountData(uid: string, email?: string) {
   const refs: DocumentReference[] = [];
 
   for (const name of userSubcollections) {
@@ -171,6 +172,12 @@ export async function deleteAccountData(uid: string) {
   }
 
   await deleteRefs(refs);
+
+  // Take the account out of the "find by email" directory too.
+  if (email) {
+    await removeEmail(email).catch(() => {});
+  }
+
   await updateDoc(doc(db, 'users', uid), {
     disabled: true,
     deletedByAdmin: true,

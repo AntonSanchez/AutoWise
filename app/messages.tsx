@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppHeader } from '@/components/app-header';
@@ -9,16 +9,74 @@ import { BottomNavigation } from '@/components/bottom-navigation';
 import { formatMessageTime, useMessages } from '@/components/messages-provider';
 import { useThemeColors, withAlpha, type ThemeColors } from '@/components/theme-provider';
 import { useSafeNavigation } from '@/hooks/use-safe-navigation';
+import { findUserByEmail } from '@/lib/directory';
+
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // The Messages tab, shared by customers and mechanics: every chat the signed-in person is in.
 export default function MessagesScreen() {
   const navigate = useSafeNavigation(false);
   const { role, user } = useAuth();
-  const { conversations } = useMessages();
+  const { conversations, startConversation } = useMessages();
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [recipientEmail, setRecipientEmail] = useState('');
+  const [composeError, setComposeError] = useState('');
+  const [finding, setFinding] = useState(false);
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   // Chats that were opened but never had a message sent stay out of the list.
   const visible = conversations.filter((conversation) => conversation.lastMessage.length > 0);
+
+  const closeCompose = () => {
+    setComposeOpen(false);
+    setRecipientEmail('');
+    setComposeError('');
+  };
+
+  // Looks the person up by their exact email, then opens (or creates) the chat with them.
+  const handleStartChat = async () => {
+    const email = recipientEmail.trim().toLowerCase();
+
+    if (finding) {
+      return;
+    }
+
+    if (!emailPattern.test(email)) {
+      setComposeError('Enter their full email address.');
+      return;
+    }
+
+    if (email === user?.email?.toLowerCase()) {
+      setComposeError("That's your own email address.");
+      return;
+    }
+
+    setFinding(true);
+    setComposeError('');
+
+    try {
+      const person = await findUserByEmail(email);
+
+      if (!person) {
+        setComposeError('No AutoWise account found for that email. Check the spelling, or ask them to open the app once so they can be found.');
+        return;
+      }
+
+      if (person.uid === user?.uid) {
+        setComposeError("That's your own account.");
+        return;
+      }
+
+      const conversationId = await startConversation(person);
+      closeCompose();
+      navigate(`/message/${conversationId}`);
+    } catch (error) {
+      console.error('AutoWise: could not start chat', error);
+      setComposeError("Couldn't start the chat. Check your connection and that the latest firestore.rules are published.");
+    } finally {
+      setFinding(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -32,6 +90,17 @@ export default function MessagesScreen() {
             </Text>
           </View>
 
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Start a new message"
+            hitSlop={8}
+            onPress={() => setComposeOpen(true)}
+            style={({ pressed }) => [styles.newButton, pressed && styles.conversationCardPressed]}
+          >
+            <Ionicons name="create-outline" size={18} color={colors.dark} />
+            <Text style={styles.newButtonText}>New message</Text>
+          </Pressable>
+
           {visible.length === 0 && (
             <View style={styles.emptyCard}>
               <View style={styles.emptyIcon}>
@@ -40,8 +109,8 @@ export default function MessagesScreen() {
               <Text style={styles.emptyTitle}>No messages yet</Text>
               <Text style={styles.emptyText}>
                 {role === 'mechanic'
-                  ? 'Accept a request, then tap the chat button on the job to message the customer.'
-                  : 'Once a mechanic accepts your service or checkup, tap Message mechanic on it (open the car, Schedule tab) to start a chat.'}
+                  ? 'Tap New message to chat with anyone by their email, or accept a request and tap the chat button on the job to message the customer.'
+                  : 'Tap New message to chat with anyone by their email, or message your mechanic once they accept your service or checkup (open the car, Schedule tab).'}
               </Text>
             </View>
           )}
@@ -80,6 +149,45 @@ export default function MessagesScreen() {
         </ScrollView>
 
         <BottomNavigation activeRoute="/messages" />
+
+        <Modal animationType="fade" transparent visible={composeOpen} onRequestClose={closeCompose}>
+          <KeyboardAvoidingView behavior="padding" style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>New message</Text>
+              <Text style={styles.modalMessage}>Enter the email address the other person signed up with. Customers and mechanics can both be found this way.</Text>
+              <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus
+                keyboardType="email-address"
+                onChangeText={(value) => {
+                  setComposeError('');
+                  setRecipientEmail(value);
+                }}
+                onSubmitEditing={handleStartChat}
+                placeholder="name@example.com"
+                placeholderTextColor={colors.muted}
+                returnKeyType="go"
+                style={styles.modalInput}
+                value={recipientEmail}
+              />
+              {composeError.length > 0 && <Text style={styles.modalError}>{composeError}</Text>}
+              <View style={styles.modalActions}>
+                <Pressable accessibilityRole="button" onPress={closeCompose} style={({ pressed }) => [styles.cancelButton, pressed && styles.conversationCardPressed]}>
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={finding}
+                  onPress={handleStartChat}
+                  style={({ pressed }) => [styles.confirmButton, (pressed || finding) && styles.conversationCardPressed]}
+                >
+                  {finding ? <ActivityIndicator color={colors.dark} /> : <Text style={styles.confirmButtonText}>Start chat</Text>}
+                </Pressable>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -93,6 +201,19 @@ function createStyles(colors: ThemeColors) {
     pageTitleRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
     pageTitle: { color: colors.text, fontSize: 18, fontWeight: '800' },
     sectionMini: { color: colors.muted, fontSize: 10 },
+    newButton: { alignItems: 'center', backgroundColor: colors.gold, borderRadius: 12, flexDirection: 'row', gap: 8, justifyContent: 'center', marginBottom: 14, minHeight: 46 },
+    newButtonText: { color: colors.dark, fontSize: 14, fontWeight: '800' },
+    modalBackdrop: { alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)', flex: 1, justifyContent: 'center', padding: 24 },
+    modalCard: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 18, borderWidth: 1, padding: 20, width: '100%' },
+    modalTitle: { color: colors.text, fontSize: 17, fontWeight: '800' },
+    modalMessage: { color: colors.muted, fontSize: 13, lineHeight: 19, marginTop: 8 },
+    modalInput: { backgroundColor: colors.cardAlt, borderColor: colors.border, borderRadius: 11, borderWidth: 1, color: colors.text, fontSize: 14, marginTop: 16, minHeight: 48, paddingHorizontal: 13 },
+    modalError: { color: colors.danger, fontSize: 12, lineHeight: 17, marginTop: 12 },
+    modalActions: { flexDirection: 'row', gap: 10, marginTop: 20 },
+    cancelButton: { alignItems: 'center', backgroundColor: colors.cardAlt, borderColor: colors.border, borderRadius: 12, borderWidth: 1, flex: 1, justifyContent: 'center', minHeight: 46 },
+    cancelButtonText: { color: colors.text, fontSize: 14, fontWeight: '700' },
+    confirmButton: { alignItems: 'center', backgroundColor: colors.gold, borderRadius: 12, flex: 1, justifyContent: 'center', minHeight: 46 },
+    confirmButtonText: { color: colors.dark, fontSize: 14, fontWeight: '800' },
     emptyCard: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 16, borderWidth: 1, padding: 24 },
     emptyIcon: { alignItems: 'center', backgroundColor: withAlpha(colors.gold, 0.14), borderRadius: 18, height: 56, justifyContent: 'center', marginBottom: 14, width: 56 },
     emptyTitle: { color: colors.text, fontSize: 16, fontWeight: '800' },

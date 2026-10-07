@@ -15,6 +15,13 @@ export const requestTypeOptions: { value: RequestType; label: string }[] = [
   { value: 'checkup', label: 'Checkup' },
 ];
 
+// Every checkup costs a flat fee; for services the customer chooses the amount when booking.
+export const CHECKUP_FEE = 100;
+
+export function formatFee(fee?: number): string {
+  return typeof fee === 'number' && fee > 0 ? `\u20B1${fee.toLocaleString('en-PH', { maximumFractionDigits: 2 })}` : '';
+}
+
 export function getServiceStatus(service: { status?: string }): ServiceStatus {
   return service.status === 'accepted' || service.status === 'in_progress' || service.status === 'completed' ? service.status : 'pending';
 }

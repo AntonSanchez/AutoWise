@@ -17,8 +17,13 @@ rules_version = '2';
 //
 // Messages: /conversations/{idA_idB} holds a chat between exactly two users (the two uids,
 // sorted, joined with "_"), with its messages in a `messages` subcollection. Only the two people
-// in a chat can read or write it, and messages can't be edited or deleted. A chat can only be
-// started when at least one side is an approved mechanic, so customers can't message each other.
+// in a chat can read or write it, and messages can't be edited or deleted. Any two signed-in people
+// can chat (customer to customer, customer to mechanic). To start one you need the other person's
+// uid, which you get from /emailIndex by knowing their exact email (see below).
+//
+// Email index: /emailIndex/{email in lowercase} = { uid, name, role }. Each account writes only its
+// own entry. Anyone signed in can read an entry if they know the exact email, but entries can't be
+// listed, so there is no public directory of users.
 //
 // Push tokens: /pushTokens/{uid} stores the device token used to notify that user. Only the owner
 // can write it. Approved mechanics and people who share a chat with the user can read it, so the
@@ -91,6 +96,15 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(userId)/scheduledServices/$(historyId.replace('-history$', ''))).data.get('mechanicId', '') == request.auth.uid;
     }
 
+    // When a mechanic completes their job, the app logs it in the customer's Records. The record id is
+    // "<serviceId>-record" and the booking must currently belong to this mechanic.
+    function mechanicCanLogRecord(userId, recordId) {
+      return request.resource.data.keys().hasOnly(['id', 'carId', 'title', 'value', 'detail', 'source', 'createdAt'])
+        && request.resource.data.source == 'mechanic'
+        && request.resource.data.id == recordId
+        && get(/databases/$(database)/documents/users/$(userId)/scheduledServices/$(recordId.replace('-record$', ''))).data.get('mechanicId', '') == request.auth.uid;
+    }
+
     // Owner of the data AND not disabled, or an admin.
     function canAccessUserData(userId) {
       return (isOwner(userId) && !isDisabled(userId)) || isAdmin();
@@ -103,13 +117,6 @@ service cloud.firestore {
         && userData(request.auth.uid).get('disabled', false) != true
         && (userData(request.auth.uid).get('role', 'customer') != 'mechanic'
           || userData(request.auth.uid).get('mechanicApproved', false) == true);
-    }
-
-    function isApprovedMechanicUser(userId) {
-      return exists(/databases/$(database)/documents/users/$(userId))
-        && userData(userId).get('role', 'customer') == 'mechanic'
-        && userData(userId).get('mechanicApproved', false) == true
-        && userData(userId).get('disabled', false) != true;
     }
 
     function isChatParticipant(conversationId) {
@@ -127,8 +134,7 @@ service cloud.firestore {
         && request.resource.data.participants.size() == 2
         && request.auth.uid in request.resource.data.participants
         && request.resource.data.participants[0] < request.resource.data.participants[1]
-        && conversationId == request.resource.data.participants[0] + '_' + request.resource.data.participants[1]
-        && (isApprovedMechanicUser(request.resource.data.participants[0]) || isApprovedMechanicUser(request.resource.data.participants[1]));
+        && conversationId == request.resource.data.participants[0] + '_' + request.resource.data.participants[1];
 
       // Only the "last message" summary and read markers change after a chat is created.
       allow update: if canChat()
@@ -147,6 +153,20 @@ service cloud.firestore {
           && request.resource.data.createdAt == request.time;
         allow update, delete: if false;
       }
+    }
+
+    match /emailIndex/{emailKey} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create, update: if isSignedIn()
+        && request.auth.token.email != null
+        && emailKey == request.auth.token.email.lower()
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'role'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 100
+        && request.resource.data.role == userData(request.auth.uid).get('role', 'customer');
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
     }
 
     match /pushTokens/{userId} {
@@ -234,6 +254,7 @@ service cloud.firestore {
 
       match /records/{recordId} {
         allow read, write: if canAccessUserData(userId);
+        allow create: if isApprovedMechanic() && mechanicCanLogRecord(userId, recordId);
       }
     }
   }

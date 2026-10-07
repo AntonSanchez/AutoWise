@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -6,11 +7,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppHeader } from '@/components/app-header';
 import { BottomNavigation } from '@/components/bottom-navigation';
+import { PhotoSourceModal } from '@/components/photo-source-modal';
 import { useProfile } from '@/components/profile-provider';
 import { SelectField } from '@/components/select-field';
 import { useThemeColors, type ThemeColors } from '@/components/theme-provider';
 import { useSafeBack } from '@/hooks/use-safe-navigation';
 import { formatDateInput, parseDateInput, startOfToday } from '@/lib/date-input';
+import { CAR_PHOTO, pickPhoto, type PhotoSource } from '@/lib/photo';
 
 const transmissionOptions = ['Automatic', 'Manual'] as const;
 const fuelOptions = ['Gasoline', 'Diesel', 'Electric'] as const;
@@ -22,6 +25,7 @@ const emptyForm = {
   fuelType: 'Gasoline',
   dateBought: '',
   description: '',
+  photoUri: '',
 };
 
 export default function AddCarScreen() {
@@ -34,12 +38,29 @@ export default function AddCarScreen() {
   const [form, setForm] = useState(editingCar ?? emptyForm);
   const [validationError, setValidationError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const handleChange = (field: keyof typeof emptyForm, value: string) => {
     setValidationError('');
     setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const choosePhoto = async (source: PhotoSource) => {
+    setPhotoBusy(true);
+
+    try {
+      const uri = await pickPhoto(source, CAR_PHOTO);
+
+      if (uri) {
+        handleChange('photoUri', uri);
+      }
+    } finally {
+      setPhotoBusy(false);
+      setPhotoModalVisible(false);
+    }
   };
 
   const handleSave = () => {
@@ -54,6 +75,7 @@ export default function AddCarScreen() {
       fuelType: form.fuelType.trim(),
       dateBought: form.dateBought.trim(),
       description: form.description.trim(),
+      photoUri: form.photoUri ?? '',
     };
 
     if (trimmed.vehicleName.length === 0 || trimmed.vehicleModel.length === 0) {
@@ -107,6 +129,29 @@ export default function AddCarScreen() {
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.card}>
+            <Text style={styles.label}>Picture (optional)</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={form.photoUri ? 'Change car picture' : 'Add a picture'}
+              onPress={() => setPhotoModalVisible(true)}
+              style={({ pressed }) => [styles.photoBox, pressed && styles.buttonPressed]}
+            >
+              {form.photoUri ? (
+                <>
+                  <Image source={{ uri: form.photoUri }} style={styles.photoImage} contentFit="cover" />
+                  <View style={styles.photoEditBadge}>
+                    <Ionicons name="camera" size={14} color={colors.dark} />
+                    <Text style={styles.photoEditText}>Change</Text>
+                  </View>
+                </>
+              ) : (
+                <View style={styles.photoEmpty}>
+                  <Ionicons name="camera-outline" size={26} color={colors.gold} />
+                  <Text style={styles.photoEmptyText}>Add a picture</Text>
+                </View>
+              )}
+            </Pressable>
+
             <Text style={styles.label}>Vehicle name</Text>
             <TextInput
               style={styles.input}
@@ -181,6 +226,22 @@ export default function AddCarScreen() {
           {validationError && <Text style={styles.requiredError}>{validationError}</Text>}
         </ScrollView>
 
+        <PhotoSourceModal
+          visible={photoModalVisible}
+          title="Car picture"
+          busy={photoBusy}
+          onPick={choosePhoto}
+          onRemove={
+            form.photoUri
+              ? () => {
+                  handleChange('photoUri', '');
+                  setPhotoModalVisible(false);
+                }
+              : undefined
+          }
+          onClose={() => setPhotoModalVisible(false)}
+        />
+
         <BottomNavigation activeRoute="/cars" />
       </View>
     </SafeAreaView>
@@ -190,6 +251,12 @@ export default function AddCarScreen() {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: colors.background },
+    photoBox: { backgroundColor: colors.background, borderColor: colors.border, borderRadius: 12, borderStyle: 'dashed', borderWidth: 1, height: 160, marginBottom: 6, overflow: 'hidden' },
+    photoImage: { height: '100%', width: '100%' },
+    photoEmpty: { alignItems: 'center', flex: 1, gap: 6, justifyContent: 'center' },
+    photoEmptyText: { color: colors.gold, fontSize: 13, fontWeight: '800' },
+    photoEditBadge: { alignItems: 'center', backgroundColor: colors.gold, borderRadius: 999, bottom: 8, flexDirection: 'row', gap: 5, paddingHorizontal: 10, paddingVertical: 5, position: 'absolute', right: 8 },
+    photoEditText: { color: colors.dark, fontSize: 11, fontWeight: '800' },
     container: { flex: 1, backgroundColor: colors.background },
     headerRow: {
       alignItems: 'center',

@@ -2,6 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/components/auth-provider';
+import { Avatar } from '@/components/avatar';
+import { useProfile } from '@/components/profile-provider';
 import { useThemeColors, type ThemeColors } from '@/components/theme-provider';
 import { useSafeNavigation } from '@/hooks/use-safe-navigation';
 import { useMemo } from 'react';
@@ -9,6 +11,7 @@ import { useMemo } from 'react';
 export function AppHeader() {
   const navigate = useSafeNavigation(false);
   const { role } = useAuth();
+  const { profile } = useProfile();
   const isMechanic = role === 'mechanic';
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -16,6 +19,15 @@ export function AppHeader() {
   return (
     <View style={styles.header}>
       <View style={styles.brandWrap}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={isMechanic ? 'Open mechanic account' : 'Open vehicle profile'}
+          hitSlop={6}
+          onPress={() => navigate(isMechanic ? '/mechanic/account' : '/profile')}
+          style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}
+        >
+          <Avatar uri={profile.avatarUri} size={38} radius={19} icon="person" style={styles.avatarFrame} />
+        </Pressable>
         <Text style={styles.brand}>AUTOWISE</Text>
       </View>
 
@@ -32,15 +44,6 @@ export function AppHeader() {
             <View style={styles.notificationDot} />
           </Pressable>
         )}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={isMechanic ? 'Open mechanic account' : 'Open vehicle profile'}
-          hitSlop={6}
-          onPress={() => navigate(isMechanic ? '/mechanic/account' : '/profile')}
-          style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}
-        >
-          <Ionicons name="person" size={17} color={colors.dark} />
-        </Pressable>
       </View>
     </View>
   );
@@ -59,7 +62,10 @@ function createStyles(colors: ThemeColors) {
     paddingHorizontal: 18,
   },
   brandWrap: {
+    alignItems: 'center',
     flex: 1,
+    flexDirection: 'row',
+    gap: 12,
   },
   brand: {
     color: colors.gold,
@@ -93,11 +99,13 @@ function createStyles(colors: ThemeColors) {
   },
   profileButton: {
     alignItems: 'center',
-    backgroundColor: colors.gold,
-    borderRadius: 10,
-    height: 32,
+    height: 38,
     justifyContent: 'center',
-    width: 32,
+    width: 38,
+  },
+  avatarFrame: {
+    borderColor: colors.gold,
+    borderWidth: 2,
   },
   pressed: {
     opacity: 0.7,

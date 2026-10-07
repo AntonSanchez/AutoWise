@@ -1,20 +1,42 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/components/auth-provider';
+import { Avatar } from '@/components/avatar';
 import { BottomNavigation } from '@/components/bottom-navigation';
+import { PhotoSourceModal } from '@/components/photo-source-modal';
+import { useProfile } from '@/components/profile-provider';
 import { useAppTheme, useThemeColors, withAlpha, type ThemeColors } from '@/components/theme-provider';
 import { useSafeBack } from '@/hooks/use-safe-navigation';
+import { AVATAR_PHOTO, pickPhoto, type PhotoSource } from '@/lib/photo';
 
 // A mechanic's account page: who they're signed in as, whether they're approved, appearance, sign out.
 export default function MechanicAccountScreen() {
   const goBack = useSafeBack();
   const { user, mechanicApproved, signOut } = useAuth();
+  const { profile, updateProfile } = useProfile();
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const { isDark, toggleMode } = useAppTheme();
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const choosePhoto = async (source: PhotoSource) => {
+    setPhotoBusy(true);
+
+    try {
+      const uri = await pickPhoto(source, AVATAR_PHOTO);
+
+      if (uri) {
+        updateProfile({ avatarUri: uri });
+      }
+    } finally {
+      setPhotoBusy(false);
+      setPhotoModalVisible(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -35,9 +57,17 @@ export default function MechanicAccountScreen() {
 
           <View style={styles.card}>
             <View style={styles.profileRow}>
-              <View style={styles.avatar}>
-                <Ionicons name="construct" size={22} color={colors.gold} />
-              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Change profile picture"
+                onPress={() => setPhotoModalVisible(true)}
+                style={({ pressed }) => [styles.avatar, pressed && styles.pressed]}
+              >
+                <Avatar uri={profile.avatarUri} size={56} radius={16} icon="construct" />
+                <View style={styles.cameraBadge}>
+                  <Ionicons name="camera" size={11} color={colors.dark} />
+                </View>
+              </Pressable>
               <View style={styles.profileText}>
                 <Text style={styles.name}>{user?.displayName || 'Mechanic'}</Text>
                 <View style={styles.statusRow}>
@@ -81,6 +111,22 @@ export default function MechanicAccountScreen() {
           </Pressable>
         </ScrollView>
 
+        <PhotoSourceModal
+          visible={photoModalVisible}
+          title="Profile picture"
+          busy={photoBusy}
+          onPick={choosePhoto}
+          onRemove={
+            profile.avatarUri
+              ? () => {
+                  updateProfile({ avatarUri: '' });
+                  setPhotoModalVisible(false);
+                }
+              : undefined
+          }
+          onClose={() => setPhotoModalVisible(false)}
+        />
+
         <BottomNavigation activeRoute="/mechanic/account" />
       </View>
     </SafeAreaView>
@@ -98,7 +144,8 @@ function createStyles(colors: ThemeColors) {
     title: { color: colors.text, fontSize: 18, fontWeight: '800' },
     card: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 16, borderWidth: 1, marginBottom: 14, padding: 16 },
     profileRow: { alignItems: 'center', flexDirection: 'row' },
-    avatar: { alignItems: 'center', backgroundColor: withAlpha(colors.gold, 0.12), borderRadius: 14, height: 46, justifyContent: 'center', marginRight: 12, width: 46 },
+    cameraBadge: { alignItems: 'center', backgroundColor: colors.gold, borderRadius: 10, bottom: -4, height: 20, justifyContent: 'center', position: 'absolute', right: -4, width: 20 },
+    avatar: { marginRight: 12 },
     profileText: { flex: 1 },
     name: { color: colors.text, fontSize: 17, fontWeight: '800' },
     statusRow: { alignItems: 'center', flexDirection: 'row', gap: 6, marginTop: 4 },

@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Avatar } from '@/components/avatar';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -167,9 +168,14 @@ export default function AdminUsersScreen() {
                 onPress={() => navigate(`/admin/user/${item.uid}`)}
                 style={({ pressed }) => [styles.userCard, pressed && styles.pressed]}
               >
-                <View style={[styles.avatar, item.disabled && styles.avatarDisabled]}>
-                  <Ionicons name={isOtherAdmin ? 'shield-checkmark' : item.role === 'mechanic' ? 'construct' : 'person'} size={19} color={item.disabled ? colors.muted : colors.gold} />
-                </View>
+                <Avatar
+                  uri={item.avatarUri}
+                  size={40}
+                  radius={12}
+                  muted={item.disabled}
+                  icon={isOtherAdmin ? 'shield-checkmark' : item.role === 'mechanic' ? 'construct' : 'person'}
+                  style={styles.avatar}
+                />
                 <View style={styles.userText}>
                   <View style={styles.nameRow}>
                     <Text numberOfLines={1} style={styles.userName}>
@@ -241,7 +247,7 @@ function createStyles(colors: ThemeColors) {
     messageCard: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 14, borderWidth: 1, flexDirection: 'row', gap: 10, padding: 16 },
     messageText: { color: colors.muted, flex: 1, fontSize: 13, lineHeight: 19 },
     userCard: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 14, borderWidth: 1, flexDirection: 'row', marginBottom: 10, padding: 14 },
-    avatar: { alignItems: 'center', backgroundColor: withAlpha(colors.gold, 0.12), borderRadius: 12, height: 40, justifyContent: 'center', marginRight: 12, width: 40 },
+    avatar: { marginRight: 12 },
     avatarDisabled: { backgroundColor: withAlpha(colors.muted, 0.14) },
     userText: { flex: 1, marginRight: 8 },
     nameRow: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: 6 },

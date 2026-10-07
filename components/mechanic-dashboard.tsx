@@ -4,8 +4,10 @@ import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/components/auth-provider';
+import { Avatar } from '@/components/avatar';
 import { BottomNavigation } from '@/components/bottom-navigation';
 import { useMessages } from '@/components/messages-provider';
+import { useProfile } from '@/components/profile-provider';
 import { useThemeColors, withAlpha, type ThemeColors } from '@/components/theme-provider';
 import { useSafeNavigation } from '@/hooks/use-safe-navigation';
 import { parseDateInput } from '@/lib/date-input';
@@ -18,7 +20,7 @@ import {
   subscribeServiceRequests,
   type ServiceRequest,
 } from '@/lib/mechanic';
-import { getRequestType, getServiceStatus, getStatusLabel, type RequestType, type ServiceStatus } from '@/lib/service-status';
+import { formatFee, getRequestType, getServiceStatus, getStatusLabel, type RequestType, type ServiceStatus } from '@/lib/service-status';
 
 type Tab = 'requests' | 'jobs' | 'completed';
 type TypeFilter = 'all' | RequestType;
@@ -44,6 +46,7 @@ function scheduledTime(request: ServiceRequest) {
 // The screen a mechanic sees instead of the customer's garage dashboard.
 export function MechanicDashboard() {
   const { user, mechanicApproved } = useAuth();
+  const { profile } = useProfile();
   const navigate = useSafeNavigation(false);
   const { startConversation } = useMessages();
   const colors = useThemeColors();
@@ -145,7 +148,7 @@ export function MechanicDashboard() {
     }
 
     if (pending.kind === 'complete') {
-      await run(pending.request, () => completeRequest(pending.request), `${pending.request.title} marked as completed.`, 'Could not complete this job.');
+      await run(pending.request, () => completeRequest(pending.request, user?.displayName || undefined), `${pending.request.title} marked as completed.`, 'Could not complete this job.');
     } else {
       await run(pending.request, () => releaseRequest(pending.request), `${pending.request.title} was released back to the request list.`, 'Could not release this job.');
     }
@@ -156,20 +159,20 @@ export function MechanicDashboard() {
       <View style={styles.container}>
         <View style={styles.header}>
           <View style={styles.brandWrap}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open mechanic account"
+              hitSlop={6}
+              onPress={() => navigate('/mechanic/account')}
+              style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}
+            >
+              <Avatar uri={profile.avatarUri} size={38} radius={19} icon="construct" style={styles.avatarFrame} />
+            </Pressable>
             <Text style={styles.brand}>AUTOWISE</Text>
             <View style={styles.rolePill}>
               <Text style={styles.rolePillText}>MECHANIC</Text>
             </View>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open mechanic account"
-            hitSlop={6}
-            onPress={() => navigate('/mechanic/account')}
-            style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}
-          >
-            <Ionicons name="person" size={17} color={colors.dark} />
-          </Pressable>
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -311,6 +314,12 @@ export function MechanicDashboard() {
                         {request.scheduledDate} at {request.time}
                       </Text>
                     </View>
+                    {formatFee(request.fee) !== '' && (
+                      <View style={styles.detailLine}>
+                        <Ionicons name="cash-outline" size={15} color={colors.muted} />
+                        <Text style={styles.detailText}>Fee: {formatFee(request.fee)}</Text>
+                      </View>
+                    )}
                     {request.notes ? (
                       <Text numberOfLines={4} style={styles.notes}>
                         {request.notes}
@@ -318,15 +327,27 @@ export function MechanicDashboard() {
                     ) : null}
 
                     {tab === 'requests' && (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Accept ${request.title}`}
-                        disabled={busy}
-                        onPress={() => handleAccept(request)}
-                        style={({ pressed }) => [styles.primaryAction, (pressed || busy) && styles.pressed]}
-                      >
-                        {busy ? <ActivityIndicator color={colors.dark} /> : <Text style={styles.primaryActionText}>Accept {isCheckup ? 'checkup' : 'service'}</Text>}
-                      </Pressable>
+                      <View style={styles.actionRow}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Accept ${request.title}`}
+                          disabled={busy}
+                          onPress={() => handleAccept(request)}
+                          style={({ pressed }) => [styles.primaryAction, styles.actionFlex, (pressed || busy) && styles.pressed]}
+                        >
+                          {busy ? <ActivityIndicator color={colors.dark} /> : <Text style={styles.primaryActionText}>Accept {isCheckup ? 'checkup' : 'service'}</Text>}
+                        </Pressable>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Message ${request.customerName || 'customer'}`}
+                          disabled={busy}
+                          hitSlop={6}
+                          onPress={() => handleMessage(request)}
+                          style={({ pressed }) => [styles.releaseAction, pressed && styles.pressed]}
+                        >
+                          <Ionicons name="chatbubble-ellipses-outline" size={19} color={colors.gold} />
+                        </Pressable>
+                      </View>
                     )}
 
                     {tab === 'completed' && (
@@ -431,11 +452,12 @@ function createStyles(colors: ThemeColors) {
     safeArea: { flex: 1, backgroundColor: colors.background },
     container: { flex: 1, backgroundColor: colors.background },
     header: { alignItems: 'center', backgroundColor: colors.background, borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 76, paddingHorizontal: 18 },
-    brandWrap: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+    brandWrap: { alignItems: 'center', flexDirection: 'row', gap: 12 },
     brand: { color: colors.gold, fontSize: 20, fontWeight: '900', letterSpacing: 1 },
     rolePill: { backgroundColor: withAlpha(colors.gold, 0.14), borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
     rolePillText: { color: colors.gold, fontSize: 9, fontWeight: '900', letterSpacing: 0.8 },
-    profileButton: { alignItems: 'center', backgroundColor: colors.gold, borderRadius: 17, height: 34, justifyContent: 'center', width: 34 },
+    profileButton: { alignItems: 'center', height: 38, justifyContent: 'center', width: 38 },
+    avatarFrame: { borderColor: colors.gold, borderWidth: 2 },
     pressed: { opacity: 0.75, transform: [{ scale: 0.98 }] },
     content: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 30 },
     eyebrow: { color: colors.muted, fontSize: 11, fontWeight: '800', letterSpacing: 1.2 },
