@@ -11,6 +11,11 @@ Running Commands:
 
 #Accounts
 
+Admin : admin@gmail.com - admin123
+Mechanic : mechanic2@gmail.com - mechanic123
+
+#OLD
+
 Email: main@gmail.com
 
 Password: MainMain123
