@@ -14,11 +14,11 @@ const customerItems = [
   { label: 'Settings', icon: 'settings', route: '/settings' },
 ] as const;
 
-// Mechanics have no garage or customer settings; their tabs are the job dashboard, chats and account.
+// Mechanics have no garage or customer settings; their tabs are the job dashboard, chats and settings.
 const mechanicItems = [
   { label: 'Home', icon: 'home', route: '/(tabs)' },
   { label: 'Messages', icon: 'chatbubble', route: '/messages' },
-  { label: 'Account', icon: 'person', route: '/mechanic/account' },
+  { label: 'Settings', icon: 'settings', route: '/mechanic/account' },
 ] as const;
 
 type BottomNavigationProps = {

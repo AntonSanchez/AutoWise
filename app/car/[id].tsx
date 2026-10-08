@@ -10,7 +10,7 @@ import { useMessages } from '@/components/messages-provider';
 import { useProfile } from '@/components/profile-provider';
 import { type ThemeColors, useThemeColors, withAlpha } from '@/components/theme-provider';
 import { useSafeBack, useSafeNavigation } from '@/hooks/use-safe-navigation';
-import { getRequestType, getServiceStatus, getStatusLabel, type ServiceStatus } from '@/lib/service-status';
+import { formatFee, getRequestType, getServiceStatus, getStatusLabel, type ServiceStatus } from '@/lib/service-status';
 
 export default function CarDetailScreen() {
   const goBack = useSafeBack();
@@ -226,6 +226,17 @@ export default function CarDetailScreen() {
                     <View style={[styles.statusBadge, { backgroundColor: withAlpha(badgeColor, 0.14), borderColor: withAlpha(badgeColor, 0.38) }]}>
                       <Text style={[styles.statusBadgeText, { color: badgeColor }]}>{getStatusLabel(status)}</Text>
                     </View>
+                    {status === 'pending' && (
+                      <Pressable
+                        accessibilityLabel={`Edit ${service.title} schedule`}
+                        accessibilityRole="button"
+                        hitSlop={8}
+                        onPress={() => navigate(`/add-schedule?carId=${service.carId}&serviceId=${service.id}`)}
+                        style={({ pressed }) => [styles.removeButton, pressed && styles.removeButtonPressed]}
+                      >
+                        <Ionicons name="create-outline" size={17} color={colors.gold} />
+                      </Pressable>
+                    )}
                     <Pressable
                       accessibilityLabel={`Remove ${service.title} schedule`}
                       accessibilityRole="button"
@@ -241,6 +252,11 @@ export default function CarDetailScreen() {
                     <Text style={styles.protocolMeta}>Date: {service.scheduledDate}</Text>
                     <Text style={styles.protocolMeta}>Time: {service.time}</Text>
                   </View>
+                  {formatFee(service.fee) !== '' && (
+                    <View style={styles.protocolMetaRow}>
+                      <Text style={styles.protocolMeta}>Fee: {formatFee(service.fee)}</Text>
+                    </View>
+                  )}
                   <View style={styles.protocolMetaRow}>
                     <Text style={styles.protocolMeta}>{getRequestType(service) === 'checkup' ? 'Checkup' : 'Service'}</Text>
                     <Text style={styles.protocolMeta}>
@@ -432,7 +448,7 @@ export default function CarDetailScreen() {
                   setRecordError('');
                   setRecordForm((current) => ({ ...current, value }));
                 }}
-                placeholder="e.g. $65 or 45,000 km"
+                placeholder="e.g. ₱650 or 45,000 km"
                 placeholderTextColor={colors.muted}
               />
 

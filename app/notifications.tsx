@@ -3,76 +3,16 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppHeader } from '@/components/app-header';
-import { getNextMaintenanceRecommendation, useProfile } from '@/components/profile-provider';
+import { useNotifications } from '@/hooks/use-notifications';
 import { useMemo } from 'react';
 import { useSafeNavigation } from '@/hooks/use-safe-navigation';
 import { useThemeColors, withAlpha, type ThemeColors } from '@/components/theme-provider';
-import { getRequestType, getServiceStatus } from '@/lib/service-status';
-
-type NotificationItem = {
-  title: string;
-  message: string;
-  time: string;
-  icon: string;
-  tone: string;
-  unread: boolean;
-  carId?: string;
-};
 
 export default function NotificationsScreen() {
   const navigate = useSafeNavigation(false);
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { cars, profile, scheduledServices } = useProfile();
-  const primaryCar = cars.find((car) => car.id === profile.primaryCarId) ?? cars[0];
-  const nextService = getNextMaintenanceRecommendation(primaryCar?.odometer ?? '0');
-  // Real updates from mechanics on this customer's bookings (accepted, started, finished).
-  const serviceUpdates: NotificationItem[] = scheduledServices
-    .filter((service) => getServiceStatus(service) !== 'pending')
-    .map((service) => {
-      const status = getServiceStatus(service);
-      const kind = getRequestType(service) === 'checkup' ? 'Checkup' : 'Service';
-      const verb = status === 'completed' ? 'completed' : status === 'in_progress' ? 'in progress' : 'accepted';
-
-      return {
-        title: `${kind} ${verb}: ${service.title}`,
-        message: `${service.mechanicName || 'A mechanic'} ${
-          status === 'completed' ? 'finished' : status === 'in_progress' ? 'started work on' : 'accepted'
-        } your ${kind.toLowerCase()} for ${service.vehicle} on ${service.scheduledDate} at ${service.time}.`,
-        time: service.scheduledDate,
-        icon: status === 'completed' ? 'checkmark-done-outline' : 'construct-outline',
-        tone: status === 'completed' ? colors.green : colors.gold,
-        unread: status !== 'completed',
-        carId: service.carId,
-      };
-    });
-  const notifications: NotificationItem[] = [
-    ...serviceUpdates,
-    {
-      title: `${nextService.title} status: ${nextService.status}`,
-      message: `Recommended action: ${nextService.action}. ${nextService.dueIn.toLocaleString()} km remaining until the next check window.`,
-      time: 'Today',
-      icon: nextService.icon,
-      tone: colors.gold,
-      unread: true,
-    },
-    {
-      title: 'Vehicle profile is up to date',
-      message: 'Your vehicle information is ready across AutoWise.',
-      time: 'Yesterday',
-      icon: 'checkmark-circle-outline',
-      tone: colors.green,
-      unread: false,
-    },
-    {
-      title: 'Inspection reminder',
-      message: `Use condition-based checks and inspect before reaching ${nextService.targetMileage.toLocaleString()} km.`,
-      time: '3 days ago',
-      icon: 'warning-outline',
-      tone: colors.red,
-      unread: false,
-    },
-  ];
+  const { notifications, unreadCount, primaryCar, clearAll, clearOne } = useNotifications();
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -86,20 +26,34 @@ export default function NotificationsScreen() {
               <Text style={styles.subtitle}>Stay on top of {primaryCar?.vehicleName ?? 'your vehicles'}.</Text>
             </View>
             <View style={styles.countBadge}>
-              <Text style={styles.countText}>{notifications.filter((item) => item.unread).length} new</Text>
+              <Text style={styles.countText}>{unreadCount} new</Text>
             </View>
           </View>
 
+          {notifications.length > 0 && (
+            <Pressable accessibilityRole="button" accessibilityLabel="Clear all notifications" onPress={clearAll} style={({ pressed }) => [styles.clearAll, pressed && styles.pressed]}>
+              <Ionicons name="trash-outline" size={15} color={colors.gold} />
+              <Text style={styles.clearAllText}>Clear all</Text>
+            </Pressable>
+          )}
+
+          {notifications.length === 0 && (
+            <View style={styles.emptyCard}>
+              <Ionicons name="notifications-off-outline" size={30} color={colors.muted} />
+              <Text style={styles.emptyText}>No new notification yet</Text>
+            </View>
+          )}
+
           <View style={styles.list}>
-            {notifications.map((notification, index) => (
+            {notifications.map((notification) => (
               <Pressable
-                key={`${notification.title}-${index}`}
+                key={notification.id}
                 style={({ pressed }) => [
                   styles.notificationCard,
                   notification.unread && styles.unreadCard,
                   pressed && styles.pressed,
                 ]}
-                onPress={() => navigate(notification.carId ? `/car/${notification.carId}` : primaryCar ? `/car/${primaryCar.id}` : '/cars')}
+                onPress={() => navigate(notification.href ? notification.href : notification.carId ? `/car/${notification.carId}` : primaryCar ? `/car/${primaryCar.id}` : '/cars')}
               >
                 <View style={[styles.iconWrap, { backgroundColor: `${notification.tone}1f` }]}>
                   <Ionicons name={notification.icon as any} size={21} color={notification.tone} />
@@ -112,7 +66,9 @@ export default function NotificationsScreen() {
                   <Text style={styles.message}>{notification.message}</Text>
                   <Text style={styles.time}>{notification.time}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={17} color={colors.muted} />
+                <Pressable accessibilityLabel={`Clear ${notification.title}`} accessibilityRole="button" hitSlop={10} onPress={() => clearOne(notification.id)}>
+                  <Ionicons name="close" size={18} color={colors.muted} />
+                </Pressable>
               </Pressable>
             ))}
           </View>
@@ -171,6 +127,10 @@ function createStyles(colors: ThemeColors) {
   },
   countText: { color: colors.gold, fontFamily: 'Arial', fontSize: 11, fontWeight: '800' },
   list: { gap: 11 },
+  clearAll: { alignItems: 'center', alignSelf: 'flex-end', flexDirection: 'row', gap: 6, marginBottom: 10, minHeight: 32 },
+  clearAllText: { color: colors.gold, fontSize: 12, fontWeight: '800' },
+  emptyCard: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 16, borderWidth: 1, gap: 10, marginBottom: 14, padding: 28 },
+  emptyText: { color: colors.softText, fontSize: 14, fontWeight: '700' },
   notificationCard: {
     alignItems: 'center',
     backgroundColor: colors.card,

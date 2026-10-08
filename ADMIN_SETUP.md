@@ -90,9 +90,17 @@ tabs at the bottom).
   completed job.
 - Each pair of people shares one chat, so chatting again from another booking continues the same thread.
 - Unread chats get a gold outline and a dot, and the Messages tab shows an unread count.
-- Chats can only be started when one side is an **approved** mechanic, so customers can't message
-  each other. Only the two people in a chat can read it, and sent messages can't be edited or deleted
-  (enforced in `firestore.rules`). Admins can't read chats either.
+- **Anyone can message anyone, including customer to customer.** On the Messages tab tap **New message**,
+  type the other person's email address, and tap **Start chat**. People can only be found by their exact
+  email: there is no list of users to browse, so nobody can look through the accounts. The lookup says whether
+  an account exists for an email, so don't treat emails as secret from other signed-in users.
+- Accounts appear in that lookup once they have opened the app after this update (it publishes their name
+  and role under their email), so older accounts need to sign in once. Deleting an account's data in the
+  admin screen removes it from the lookup.
+- Only the two people in a chat can read it, and sent messages can't be edited or deleted (enforced in
+  `firestore.rules`). Admins can't read chats either.
+- In the chat, **Enter sends** (Shift+Enter makes a new line on the web), and the keyboard no longer covers
+  the message box.
 - Chats appear in the list once the first message is sent.
 
 ## Push notifications
@@ -104,18 +112,29 @@ tabs at the bottom).
 - Devices register a token on sign-in (saved at `pushTokens/{uid}`, removed on sign-out). The sending
   app asks Expo's push service to deliver, so no server is needed.
 
-**Setup needed (push does nothing until this is done, and the app works normally without it):**
+**Expo Go on Android can't do remote push** (removed in SDK 53, still true in SDK 54), so Expo Go can't
+get a notification while the app is closed. What it does instead: when a mechanic accepts a booking and the
+customer's app is open (or recently in the background), the phone shows a normal system notification, or an
+in-app banner on the web or if notifications aren't allowed. The app never asks Expo Go for a push token, which
+is the call Expo blocks. Real push, including when the app is fully closed, needs a **development build**:
 
-1. `npm install` (the new `expo-notifications` package is already in `package.json`).
-2. Create an EAS project so Expo can issue push tokens: `npm i -g eas-cli`, `eas login`, `eas init`.
-   This adds a project id to `app.json`.
-3. **Android needs a development build.** Expo Go on Android can't receive remote push (Expo SDK 53+).
-   Add `expo-dev-client`, then `eas build --profile development --platform android`. Android also
-   needs Firebase Cloud Messaging credentials uploaded to EAS; follow Expo's guide at
-   https://docs.expo.dev/push-notifications/push-notifications-setup/.
-4. iPhones need Apple developer credentials for push on a real device.
-5. Test: sign in as a customer on one device and an approved mechanic on another, book a service, and
-   accept it as the mechanic.
+1. `npm install`
+2. `npm install -g eas-cli`, then `eas login`
+3. `npx expo install expo-dev-client`
+4. `eas init` (adds your EAS project id to `app.json`) and `eas build:configure` (creates `eas.json`
+   with a development profile)
+5. **Firebase for Android:** in the Firebase console add an Android app with package name
+   `com.kadong.AutoWise` (the one in `app.json`), download `google-services.json` into the project
+   root, and add `"googleServicesFile": "./google-services.json"` under `"android"` in `app.json`.
+6. **Send permission:** Firebase console → Project settings → Service accounts → Generate new private
+   key, then run `eas credentials`, choose Android → your profile → Google Service Account → FCM V1,
+   and upload that JSON (guide: https://docs.expo.dev/push-notifications/fcm-credentials/).
+7. Build and install the development app:
+   `eas build --profile development --platform android`, then install the APK it gives you.
+8. Run `npx expo start --dev-client` and open the project in that installed app instead of Expo Go.
+9. Test: customer on one device, approved mechanic on another, book a service, accept it.
+
+iPhones need Apple developer credentials for push on a real device (Expo Go on iOS can still receive it).
 
 Push limits: anyone who can read a user's token (approved mechanics, and people who share a chat with
 them) can send them a notification, because sending happens from the app. For a stricter setup,
@@ -143,3 +162,57 @@ is written (needs Firebase's Blaze plan). Notifications can't be sent to the web
   handy for this.
 - Because disabled-account checks read the user's profile, each protected read costs one
   extra Firestore document read. That's small, but it is there.
+
+## Pictures
+
+- Profile pictures (customers via Profile, mechanics via Mechanic account) show at the top-left of the header and next to every account in the admin list and detail screens.
+- Cars have an optional "Add a picture" on the Add/Edit Car form; it shows in the car list (and the admin car list). Pictures are stored as small compressed images on the Firestore document, so no Firebase Storage is needed and no rules changes are required.
+
+## Completed services become records
+
+- When a mechanic taps Complete, the customer automatically gets a Record for that car ("<service> (Service|Checkup)", completed date, who did it). The History entry flips to Completed too.
+- The Home screen "Upcoming appointment" card lists every booked service and checkup that is not yet completed, soonest first, with its status.
+- **Republish `firestore.rules`** - it has a new rule letting the mechanic who owns the job create that record.
+
+## Fees, editing and requests
+
+- Booking a checkup sets a flat fee of 100 pesos automatically; for a service the customer types how much they want to pay. The fee shows on the car schedule, on Home, on the mechanic request cards and in the automatic record.
+- Customers can edit a booking (pencil icon on the car Schedule tab) while it is still Pending.
+- Mechanics get a message button next to Accept on each request.
+- The Add Record value hint now uses pesos.
+- No rules change is needed for this update.
+
+## Notes
+
+- Expo Go on Android no longer loads expo-notifications at all, so the "removed from Expo Go" error is gone; customers see an in-app banner when a mechanic accepts. A development build gets real notifications.
+- The login screen scrolls, moves above the keyboard and centers on large screens.
+
+## Paging
+
+- Administration and Manage account keep the back button and title pinned at the top while the list scrolls under them.
+- The accounts list (including the Mechanics filter), an account's cars, and the mechanic service requests show at most 10 per page with Previous/Next.
+
+## Pickers, pinned filters, notifications
+
+- Book Services (date and time) and Add Car (date bought/owned) use tap-to-pick calendar and time pickers instead of typing.
+- On Administration the stats, search box and filter chips stay pinned under the title; only the list scrolls.
+- The bell menu can clear one or all notifications (remembered on the account) and shows "No new notification yet" when empty; the bell dot only shows when something is unread.
+
+## Message notifications and mute
+
+- New chat messages notify the other person: a push (development build / iOS) or, in Expo Go and on the web, an in-app banner while the app is open. Customers also see unread chats in the bell menu.
+- Each chat can be muted from the Messages list (bell icon on the row) or the chat header. Muted chats send no push, banner or bell entry to you and do not count in the Messages badge.
+- **Republish `firestore.rules`** - it now allows each person to set their own mute switch on a conversation.
+
+## Mechanic home and settings
+
+- On the mechanic home the Open / My jobs / Done counts, the Requests / Jobs / Completed tabs and the type filters stay pinned; only the request list scrolls.
+- The mechanic account page now mirrors the customer Settings screen: profile card (tap to change the picture), Appearance (dark mode and accent color), Account (email, approval) and Sign out.
+
+## Mechanic profile
+
+- Mechanics can edit their name and phone number on the Settings tab (formerly Account), same as customers. The new name is what customers see when a job is accepted.
+
+## Pictures in messages
+
+Profile pictures show in the Messages list, the chat header, beside each message and in message banners. Each person shares their own picture on their chats automatically (it can take a moment after changing it). **Republish `firestore.rules`** so chats accept the picture.

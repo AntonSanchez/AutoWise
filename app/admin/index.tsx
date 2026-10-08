@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Avatar } from '@/components/avatar';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppHeader } from '@/components/app-header';
 import { useAuth } from '@/components/auth-provider';
+import { Pager, usePagination } from '@/components/pagination';
 import { useThemeColors, withAlpha, type ThemeColors } from '@/components/theme-provider';
 import { useSafeBack, useSafeNavigation } from '@/hooks/use-safe-navigation';
 import { subscribeAdminIds, subscribeUsers, type AdminUser } from '@/lib/admin';
@@ -61,6 +63,8 @@ export default function AdminUsersScreen() {
     return byFilter.filter((item) => [item.ownerName, item.email, item.phoneNumber, item.uid].some((value) => value.toLowerCase().includes(term)));
   }, [users, search, filter]);
 
+  const { page, pageCount, pageItems, total, setPage } = usePagination(filtered, `${filter}|${search}`);
+
   const disabledCount = users.filter((item) => item.disabled).length;
   const pendingMechanics = users.filter((item) => item.role === 'mechanic' && !item.mechanicApproved && !item.disabled).length;
   const filters: { key: Filter; label: string }[] = [
@@ -74,20 +78,20 @@ export default function AdminUsersScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <View style={styles.container}>
         <AppHeader />
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <View style={styles.pageTitleRow}>
-            <Pressable
-              accessibilityLabel="Go back"
-              accessibilityRole="button"
-              hitSlop={8}
-              onPress={goBack}
-              style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
-            >
-              <Ionicons name="arrow-back" size={22} color={colors.white} />
-            </Pressable>
-            <Text style={styles.pageTitle}>Administration</Text>
-          </View>
-
+        <View style={styles.fixedArea}>
+        <View style={styles.fixedTitle}>
+          <Pressable
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+            hitSlop={8}
+            onPress={goBack}
+            style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+          >
+            <Ionicons name="arrow-back" size={22} color={colors.white} />
+          </Pressable>
+          <Text style={styles.pageTitle}>Administration</Text>
+        </View>
+          <View style={styles.fixedBody}>
           <View style={styles.statsRow}>
             <View style={styles.statCard}>
               <Text style={styles.statValue}>{users.length}</Text>
@@ -139,6 +143,9 @@ export default function AdminUsersScreen() {
             })}
           </ScrollView>
 
+          </View>
+        </View>
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {loading && <ActivityIndicator color={colors.gold} style={styles.loader} />}
 
           {error.length > 0 && (
@@ -155,7 +162,7 @@ export default function AdminUsersScreen() {
             </View>
           )}
 
-          {filtered.map((item) => {
+          {pageItems.map((item) => {
             const isSelf = item.uid === user?.uid;
             const isOtherAdmin = adminIds.has(item.uid);
 
@@ -167,9 +174,14 @@ export default function AdminUsersScreen() {
                 onPress={() => navigate(`/admin/user/${item.uid}`)}
                 style={({ pressed }) => [styles.userCard, pressed && styles.pressed]}
               >
-                <View style={[styles.avatar, item.disabled && styles.avatarDisabled]}>
-                  <Ionicons name={isOtherAdmin ? 'shield-checkmark' : item.role === 'mechanic' ? 'construct' : 'person'} size={19} color={item.disabled ? colors.muted : colors.gold} />
-                </View>
+                <Avatar
+                  uri={item.avatarUri}
+                  size={40}
+                  radius={12}
+                  muted={item.disabled}
+                  icon={isOtherAdmin ? 'shield-checkmark' : item.role === 'mechanic' ? 'construct' : 'person'}
+                  style={styles.avatar}
+                />
                 <View style={styles.userText}>
                   <View style={styles.nameRow}>
                     <Text numberOfLines={1} style={styles.userName}>
@@ -210,6 +222,8 @@ export default function AdminUsersScreen() {
               </Pressable>
             );
           })}
+
+          <Pager page={page} pageCount={pageCount} total={total} onChange={setPage} />
         </ScrollView>
       </View>
     </SafeAreaView>
@@ -220,7 +234,11 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: colors.background },
     container: { flex: 1, backgroundColor: colors.background },
-    content: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 30 },
+    scroll: { flex: 1 },
+    fixedArea: { backgroundColor: colors.background, borderBottomColor: colors.border, borderBottomWidth: 1 },
+    fixedBody: { paddingHorizontal: 18, paddingTop: 12 },
+    fixedTitle: { alignItems: 'center', backgroundColor: colors.background, flexDirection: 'row', paddingBottom: 10, paddingHorizontal: 18, paddingTop: 10 },
+    content: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 30 },
     pageTitleRow: { alignItems: 'center', flexDirection: 'row', marginBottom: 16 },
     backButton: { alignItems: 'center', borderRadius: 20, height: 38, justifyContent: 'center', marginRight: 8, width: 38 },
     pressed: { opacity: 0.75, transform: [{ scale: 0.98 }] },
@@ -241,7 +259,7 @@ function createStyles(colors: ThemeColors) {
     messageCard: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 14, borderWidth: 1, flexDirection: 'row', gap: 10, padding: 16 },
     messageText: { color: colors.muted, flex: 1, fontSize: 13, lineHeight: 19 },
     userCard: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 14, borderWidth: 1, flexDirection: 'row', marginBottom: 10, padding: 14 },
-    avatar: { alignItems: 'center', backgroundColor: withAlpha(colors.gold, 0.12), borderRadius: 12, height: 40, justifyContent: 'center', marginRight: 12, width: 40 },
+    avatar: { marginRight: 12 },
     avatarDisabled: { backgroundColor: withAlpha(colors.muted, 0.14) },
     userText: { flex: 1, marginRight: 8 },
     nameRow: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: 6 },

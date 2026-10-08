@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 
@@ -143,7 +143,12 @@ export default function AuthScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <View style={styles.container}>
+      <KeyboardAvoidingView behavior="padding" style={styles.container}>
+       <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+       >
         <View style={styles.brandRow}>
           <View style={styles.brandMark}>
             <Ionicons name="car-sport" size={22} color={colors.gold} />
@@ -291,7 +296,8 @@ export default function AuthScreen() {
             </Text>
           </Pressable>
         </View>
-      </View>
+       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -299,7 +305,8 @@ export default function AuthScreen() {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
   safeArea: { backgroundColor: colors.background, flex: 1 },
-  container: { backgroundColor: colors.background, flex: 1, justifyContent: 'center', padding: 24 },
+  container: { backgroundColor: colors.background, flex: 1 },
+  scrollContent: { alignSelf: 'center', flexGrow: 1, justifyContent: 'center', maxWidth: 480, padding: 24, width: '100%' },
   brandRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'center', marginBottom: 30 },
   brandMark: { alignItems: 'center', backgroundColor: withAlpha(colors.gold, 0.12), borderRadius: 12, height: 42, justifyContent: 'center', marginRight: 10, width: 42 },
   brand: { color: colors.gold, fontSize: 21, fontWeight: '900', letterSpacing: 1.4 },

@@ -4,8 +4,11 @@ import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/components/auth-provider';
+import { Avatar } from '@/components/avatar';
 import { BottomNavigation } from '@/components/bottom-navigation';
 import { useMessages } from '@/components/messages-provider';
+import { Pager, usePagination } from '@/components/pagination';
+import { useProfile } from '@/components/profile-provider';
 import { useThemeColors, withAlpha, type ThemeColors } from '@/components/theme-provider';
 import { useSafeNavigation } from '@/hooks/use-safe-navigation';
 import { parseDateInput } from '@/lib/date-input';
@@ -18,7 +21,7 @@ import {
   subscribeServiceRequests,
   type ServiceRequest,
 } from '@/lib/mechanic';
-import { getRequestType, getServiceStatus, getStatusLabel, type RequestType, type ServiceStatus } from '@/lib/service-status';
+import { formatFee, getRequestType, getServiceStatus, getStatusLabel, type RequestType, type ServiceStatus } from '@/lib/service-status';
 
 type Tab = 'requests' | 'jobs' | 'completed';
 type TypeFilter = 'all' | RequestType;
@@ -44,12 +47,13 @@ function scheduledTime(request: ServiceRequest) {
 // The screen a mechanic sees instead of the customer's garage dashboard.
 export function MechanicDashboard() {
   const { user, mechanicApproved } = useAuth();
+  const { profile, isSyncing } = useProfile();
   const navigate = useSafeNavigation(false);
   const { startConversation } = useMessages();
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const uid = user?.uid ?? '';
-  const mechanicName = user?.displayName?.trim() || 'Mechanic';
+  const mechanicName = (isSyncing ? '' : profile.ownerName.trim()) || user?.displayName?.trim() || 'Mechanic';
 
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,6 +102,7 @@ export function MechanicDashboard() {
   }, [requests, typeFilter, uid]);
 
   const shown = tab === 'requests' ? available : tab === 'jobs' ? mine : done;
+  const pages = usePagination(shown, `${tab}|${typeFilter}`);
   const counts: Record<Tab, number> = { requests: available.length, jobs: mine.length, completed: done.length };
 
   const run = async (request: ServiceRequest, action: () => Promise<void>, success: string, failure: string) => {
@@ -145,7 +150,7 @@ export function MechanicDashboard() {
     }
 
     if (pending.kind === 'complete') {
-      await run(pending.request, () => completeRequest(pending.request), `${pending.request.title} marked as completed.`, 'Could not complete this job.');
+      await run(pending.request, () => completeRequest(pending.request, user?.displayName || undefined), `${pending.request.title} marked as completed.`, 'Could not complete this job.');
     } else {
       await run(pending.request, () => releaseRequest(pending.request), `${pending.request.title} was released back to the request list.`, 'Could not release this job.');
     }
@@ -156,25 +161,90 @@ export function MechanicDashboard() {
       <View style={styles.container}>
         <View style={styles.header}>
           <View style={styles.brandWrap}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open mechanic account"
+              hitSlop={6}
+              onPress={() => navigate('/mechanic/account')}
+              style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}
+            >
+              <Avatar uri={profile.avatarUri} size={38} radius={19} icon="construct" style={styles.avatarFrame} />
+            </Pressable>
             <Text style={styles.brand}>AUTOWISE</Text>
             <View style={styles.rolePill}>
               <Text style={styles.rolePillText}>MECHANIC</Text>
             </View>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open mechanic account"
-            hitSlop={6}
-            onPress={() => navigate('/mechanic/account')}
-            style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}
-          >
-            <Ionicons name="person" size={17} color={colors.dark} />
-          </Pressable>
         </View>
 
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <Text style={styles.eyebrow}>WELCOME BACK</Text>
-          <Text style={styles.dashboardTitle}>{mechanicName}</Text>
+        {mechanicApproved && (
+          <View style={styles.fixedArea}>
+            <Text style={styles.welcomeLine} numberOfLines={1}>
+              Welcome back, <Text style={styles.welcomeName}>{mechanicName}</Text>
+            </Text>
+            <View style={styles.statsRow}>
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>{available.length}</Text>
+                <Text style={styles.statLabel}>OPEN</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>{mine.length}</Text>
+                <Text style={styles.statLabel}>MY JOBS</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>{done.length}</Text>
+                <Text style={styles.statLabel}>DONE</Text>
+              </View>
+            </View>
+
+            <View style={styles.segment}>
+              {tabs.map((item) => {
+                const selected = tab === item.key;
+
+                return (
+                  <Pressable
+                    key={item.key}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => setTab(item.key)}
+                    style={[styles.segmentButton, selected && styles.segmentButtonActive]}
+                  >
+                    <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
+                      {item.label} ({counts[item.key]})
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={styles.filterRow}>
+              {typeFilters.map((item) => {
+                const selected = typeFilter === item.key;
+
+                return (
+                  <Pressable
+                    key={item.key}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => setTypeFilter(item.key)}
+                    style={[styles.filterChip, selected && styles.filterChipActive]}
+                  >
+                    <Text style={[styles.filterText, selected && styles.filterTextActive]}>{item.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+          </View>
+        )}
+
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          {!mechanicApproved && (
+            <>
+              <Text style={styles.eyebrow}>WELCOME BACK</Text>
+              <Text style={styles.dashboardTitle}>{mechanicName}</Text>
+            </>
+          )}
 
           {!mechanicApproved ? (
             <View style={styles.pendingCard}>
@@ -189,59 +259,6 @@ export function MechanicDashboard() {
             </View>
           ) : (
             <>
-              <View style={styles.statsRow}>
-                <View style={styles.statCard}>
-                  <Text style={styles.statValue}>{available.length}</Text>
-                  <Text style={styles.statLabel}>OPEN</Text>
-                </View>
-                <View style={styles.statCard}>
-                  <Text style={styles.statValue}>{mine.length}</Text>
-                  <Text style={styles.statLabel}>MY JOBS</Text>
-                </View>
-                <View style={styles.statCard}>
-                  <Text style={styles.statValue}>{done.length}</Text>
-                  <Text style={styles.statLabel}>DONE</Text>
-                </View>
-              </View>
-
-              <View style={styles.segment}>
-                {tabs.map((item) => {
-                  const selected = tab === item.key;
-
-                  return (
-                    <Pressable
-                      key={item.key}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      onPress={() => setTab(item.key)}
-                      style={[styles.segmentButton, selected && styles.segmentButtonActive]}
-                    >
-                      <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
-                        {item.label} ({counts[item.key]})
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              <View style={styles.filterRow}>
-                {typeFilters.map((item) => {
-                  const selected = typeFilter === item.key;
-
-                  return (
-                    <Pressable
-                      key={item.key}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      onPress={() => setTypeFilter(item.key)}
-                      style={[styles.filterChip, selected && styles.filterChipActive]}
-                    >
-                      <Text style={[styles.filterText, selected && styles.filterTextActive]}>{item.label}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
               {notice && (
                 <View style={[styles.noticeCard, { borderColor: notice.ok ? colors.green : colors.danger }]}>
                   <Ionicons name={notice.ok ? 'checkmark-circle' : 'alert-circle'} size={19} color={notice.ok ? colors.green : colors.danger} />
@@ -273,7 +290,7 @@ export function MechanicDashboard() {
                 </View>
               )}
 
-              {shown.map((request) => {
+              {pages.pageItems.map((request) => {
                 const status = getServiceStatus(request);
                 const isCheckup = getRequestType(request) === 'checkup';
                 const busy = busyId === request.id;
@@ -311,6 +328,12 @@ export function MechanicDashboard() {
                         {request.scheduledDate} at {request.time}
                       </Text>
                     </View>
+                    {formatFee(request.fee) !== '' && (
+                      <View style={styles.detailLine}>
+                        <Ionicons name="cash-outline" size={15} color={colors.muted} />
+                        <Text style={styles.detailText}>Fee: {formatFee(request.fee)}</Text>
+                      </View>
+                    )}
                     {request.notes ? (
                       <Text numberOfLines={4} style={styles.notes}>
                         {request.notes}
@@ -318,15 +341,27 @@ export function MechanicDashboard() {
                     ) : null}
 
                     {tab === 'requests' && (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Accept ${request.title}`}
-                        disabled={busy}
-                        onPress={() => handleAccept(request)}
-                        style={({ pressed }) => [styles.primaryAction, (pressed || busy) && styles.pressed]}
-                      >
-                        {busy ? <ActivityIndicator color={colors.dark} /> : <Text style={styles.primaryActionText}>Accept {isCheckup ? 'checkup' : 'service'}</Text>}
-                      </Pressable>
+                      <View style={styles.actionRow}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Accept ${request.title}`}
+                          disabled={busy}
+                          onPress={() => handleAccept(request)}
+                          style={({ pressed }) => [styles.primaryAction, styles.actionFlex, (pressed || busy) && styles.pressed]}
+                        >
+                          {busy ? <ActivityIndicator color={colors.dark} /> : <Text style={styles.primaryActionText}>Accept {isCheckup ? 'checkup' : 'service'}</Text>}
+                        </Pressable>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Message ${request.customerName || 'customer'}`}
+                          disabled={busy}
+                          hitSlop={6}
+                          onPress={() => handleMessage(request)}
+                          style={({ pressed }) => [styles.releaseAction, pressed && styles.pressed]}
+                        >
+                          <Ionicons name="chatbubble-ellipses-outline" size={19} color={colors.gold} />
+                        </Pressable>
+                      </View>
                     )}
 
                     {tab === 'completed' && (
@@ -386,6 +421,8 @@ export function MechanicDashboard() {
                   </View>
                 );
               })}
+
+              <Pager page={pages.page} pageCount={pages.pageCount} total={pages.total} onChange={pages.setPage} />
             </>
           )}
         </ScrollView>
@@ -431,13 +468,18 @@ function createStyles(colors: ThemeColors) {
     safeArea: { flex: 1, backgroundColor: colors.background },
     container: { flex: 1, backgroundColor: colors.background },
     header: { alignItems: 'center', backgroundColor: colors.background, borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 76, paddingHorizontal: 18 },
-    brandWrap: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+    brandWrap: { alignItems: 'center', flexDirection: 'row', gap: 12 },
     brand: { color: colors.gold, fontSize: 20, fontWeight: '900', letterSpacing: 1 },
     rolePill: { backgroundColor: withAlpha(colors.gold, 0.14), borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
     rolePillText: { color: colors.gold, fontSize: 9, fontWeight: '900', letterSpacing: 0.8 },
-    profileButton: { alignItems: 'center', backgroundColor: colors.gold, borderRadius: 17, height: 34, justifyContent: 'center', width: 34 },
+    profileButton: { alignItems: 'center', height: 38, justifyContent: 'center', width: 38 },
+    avatarFrame: { borderColor: colors.gold, borderWidth: 2 },
     pressed: { opacity: 0.75, transform: [{ scale: 0.98 }] },
-    content: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 30 },
+    scroll: { flex: 1 },
+    fixedArea: { backgroundColor: colors.background, borderBottomColor: colors.border, borderBottomWidth: 1, paddingBottom: 2, paddingHorizontal: 18, paddingTop: 12 },
+    welcomeLine: { color: colors.muted, fontSize: 12, marginBottom: 10 },
+    welcomeName: { color: colors.text, fontWeight: '800' },
+    content: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 30 },
     eyebrow: { color: colors.muted, fontSize: 11, fontWeight: '800', letterSpacing: 1.2 },
     dashboardTitle: { color: colors.text, fontSize: 26, fontWeight: '900', marginBottom: 16, marginTop: 4 },
     pendingCard: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 18, borderWidth: 1, padding: 24 },

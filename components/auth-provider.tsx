@@ -13,6 +13,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import { defaultProfile } from '@/constants/vehicle-defaults';
 import { resetNavigationHistory } from '@/hooks/use-safe-navigation';
 import { auth, db } from '@/lib/firebase';
+import { registerEmail } from '@/lib/directory';
 import { registerForPush, unregisterPush } from '@/lib/notifications';
 
 // What kind of account this is. Chosen with the Customer / Mechanic buttons at sign-up and fixed
@@ -79,6 +80,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const expectedRoleRef = useRef<AccountRole | null>(null);
   // While sign-up is still writing the new profile, an empty profile snapshot is expected.
   const signingUpRef = useRef(false);
+  // Remembers what was last published to the email index so it is only rewritten when it changes.
+  const indexedRef = useRef('');
   const uid = user?.uid ?? null;
   const email = user?.email ?? null;
 
@@ -126,6 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!uid) {
       setAccount(null);
+      indexedRef.current = '';
       return;
     }
 
@@ -166,6 +170,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         expectedRoleRef.current = null;
         setAccount({ uid, role, mechanicApproved: role === 'mechanic' && data?.mechanicApproved === true });
         setColdStart(false);
+
+        // Publish this account's name and role under its email so others can find it to start a chat.
+        if (snapshot.exists() && email) {
+          const name = typeof data?.ownerName === 'string' ? data.ownerName : '';
+          const key = `${email}|${name}|${role}`;
+
+          if (indexedRef.current !== key) {
+            indexedRef.current = key;
+            registerEmail(uid, email, name, role).catch(() => {
+              indexedRef.current = '';
+            });
+          }
+        }
 
         // Only ever update an existing profile here. Creating it is sign-up's job, and doing it from
         // this listener could race with sign-up and get its `role` write refused.

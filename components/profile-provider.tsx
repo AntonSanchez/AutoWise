@@ -7,6 +7,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
   writeBatch,
   type FirestoreError,
   type QueryDocumentSnapshot,
@@ -29,6 +30,7 @@ export type Car = {
   fuelType: string;
   dateBought: string;
   description: string;
+  photoUri?: string;
 };
 
 export type MaintenanceStatus =
@@ -64,6 +66,8 @@ export type ScheduledService = {
   requestType?: 'service' | 'checkup';
   customerName?: string;
   vehicleModel?: string;
+  // Fee in pesos: a flat 100 for checkups, chosen by the customer for services. Older bookings have none.
+  fee?: number;
   // The mechanic's response. Only mechanics (and admins) can change these - see firestore.rules.
   status?: 'pending' | 'accepted' | 'in_progress' | 'completed';
   mechanicId?: string;
@@ -85,6 +89,8 @@ export type VehicleRecord = {
   title: string;
   value: string;
   detail: string;
+  // 'mechanic' for records logged automatically when a mechanic completes a service.
+  source?: 'mechanic';
 };
 
 const maintenanceTemplates = [
@@ -213,6 +219,7 @@ type ProfileContextValue = {
   updateCar: (id: string, changes: Partial<Omit<Car, 'id'>>) => void;
   deleteCar: (id: string) => void;
   addScheduledService: (service: ScheduledService) => void;
+  updateScheduledService: (id: string, changes: Partial<Omit<ScheduledService, 'id'>>) => void;
   removeScheduledService: (id: string) => void;
   addHistoryItem: (item: VehicleHistoryItem) => void;
   deleteHistoryItem: (id: string) => void;
@@ -393,6 +400,37 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
           batch.set(doc(db, 'users', uid, 'scheduledServices', service.id), { ...booking, createdAt: serverTimestamp() });
           batch.set(doc(db, 'users', uid, 'history', historyEntry.id), { ...historyEntry, createdAt: serverTimestamp() });
           batch.commit().catch((error: FirestoreError) => console.error('AutoWise: failed to save scheduled service', error));
+        }
+      },
+      updateScheduledService: (id: string, changes: Partial<Omit<ScheduledService, 'id'>>) => {
+        setScheduledServices((current) => current.map((service) => (service.id === id ? { ...service, ...changes } : service)));
+        setHistoryItems((current) =>
+          current.map((item) =>
+            item.id === `${id}-history`
+              ? {
+                  ...item,
+                  title: changes.title ?? item.title,
+                  date: changes.scheduledDate ?? item.date,
+                  mileage: changes.time ?? item.mileage,
+                }
+              : item,
+          ),
+        );
+
+        if (uid) {
+          updateDoc(doc(db, 'users', uid, 'scheduledServices', id), changes).catch((error: FirestoreError) =>
+            console.error('AutoWise: failed to update scheduled service', error),
+          );
+
+          // Keep the History entry in step; it may have been deleted by the customer, which is fine.
+          const historyChanges: Record<string, string> = {};
+          if (changes.title !== undefined) historyChanges.title = changes.title;
+          if (changes.scheduledDate !== undefined) historyChanges.date = changes.scheduledDate;
+          if (changes.time !== undefined) historyChanges.mileage = changes.time;
+
+          if (Object.keys(historyChanges).length > 0) {
+            updateDoc(doc(db, 'users', uid, 'history', `${id}-history`), historyChanges).catch(() => {});
+          }
         }
       },
       removeScheduledService: (id: string) => {

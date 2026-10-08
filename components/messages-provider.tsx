@@ -13,7 +13,7 @@ import {
   type DocumentData,
   type FirestoreError,
 } from 'firebase/firestore';
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { db } from '@/lib/firebase';
 import { sendPush } from '@/lib/notifications';
@@ -41,13 +41,23 @@ export type Conversation = {
   lastMessageAtMs: number;
   lastSenderId: string;
   unread: boolean;
+  // You muted this chat: no banner, push or bell entry, and it doesn't count toward the unread badge.
+  muted: boolean;
+  // The other person's profile picture (a small data URI) and the one you last shared in this chat.
+  avatarUri: string;
+  myAvatarUri: string;
+  // The other person muted it, so no push is sent to them.
+  otherMuted: boolean;
 };
 
 export type ChatPartner = { uid: string; name: string; role: AccountRole };
 
 type MessagesContextValue = {
   conversations: Conversation[];
+  // True once the first list of chats has arrived.
+  loaded: boolean;
   unreadCount: number;
+  setMuted: (conversationId: string, muted: boolean) => Promise<void>;
   // Opens (creating if needed) the chat with this person and returns its id.
   startConversation: (partner: ChatPartner) => Promise<string>;
   sendMessage: (conversation: { id: string; otherId: string }, text: string) => Promise<void>;
@@ -76,6 +86,10 @@ function toConversation(id: string, data: DocumentData, uid: string): Conversati
     lastMessageAtMs,
     lastSenderId,
     unread: lastSenderId !== '' && lastSenderId !== uid && lastMessageAtMs > readAtMs,
+    avatarUri: typeof data.avatars?.[otherId] === 'string' ? data.avatars[otherId] : '',
+    myAvatarUri: typeof data.avatars?.[uid] === 'string' ? data.avatars[uid] : '',
+    muted: data.muted?.[uid] === true,
+    otherMuted: data.muted?.[otherId] === true,
   };
 }
 
@@ -84,6 +98,8 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
   const { profile } = useProfile();
   const uid = user?.uid ?? null;
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const sharedAvatars = useRef<Set<string>>(new Set());
   const myName = profile.ownerName?.trim() || user?.displayName?.trim() || 'User';
 
   // Live list of this person's chats. No orderBy here so Firestore needs no extra index; the list
@@ -91,6 +107,7 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!uid) {
       setConversations([]);
+      setLoaded(false);
       return;
     }
 
@@ -102,15 +119,47 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
             .map((item) => toConversation(item.id, item.data({ serverTimestamps: 'estimate' }), uid))
             .sort((a, b) => b.lastMessageAtMs - a.lastMessageAtMs),
         );
+        setLoaded(true);
       },
       (error: FirestoreError) => console.error('AutoWise: conversations sync failed', error),
     );
   }, [uid]);
 
+  // Chats can't read other people's profiles, so each person copies their own profile picture onto
+  // every chat they're in (conversation.avatars[uid]); the other person reads it from there.
+  useEffect(() => {
+    if (!uid || !loaded) {
+      return;
+    }
+
+    const avatar = profile.avatarUri ?? '';
+
+    conversations.forEach((conversation) => {
+      const key = `${conversation.id}|${avatar.length}|${avatar.slice(-24)}`;
+
+      if (conversation.myAvatarUri === avatar || sharedAvatars.current.has(key)) {
+        return;
+      }
+
+      sharedAvatars.current.add(key);
+      updateDoc(doc(db, 'conversations', conversation.id), { [`avatars.${uid}`]: avatar }).catch((error) =>
+        console.warn('AutoWise: could not share profile picture', error),
+      );
+    });
+  }, [conversations, loaded, profile.avatarUri, uid]);
+
   const value = useMemo<MessagesContextValue>(
     () => ({
       conversations,
-      unreadCount: conversations.filter((item) => item.unread).length,
+      loaded,
+      unreadCount: conversations.filter((item) => item.unread && !item.muted).length,
+      setMuted: async (conversationId: string, muted: boolean) => {
+        if (!uid) {
+          return;
+        }
+
+        await updateDoc(doc(db, 'conversations', conversationId), { [`muted.${uid}`]: muted });
+      },
       startConversation: async (partner: ChatPartner) => {
         if (!uid) {
           throw new Error('Not signed in');
@@ -157,8 +206,11 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
         });
         await batch.commit();
 
-        // Tell the other person. This never throws: if they have no device registered it does nothing.
-        void sendPush(conversation.otherId, {
+        // Tell the other person, unless they muted this chat. This never throws: if they have no device
+        // registered it does nothing.
+        const otherMuted = conversations.find((item) => item.id === conversation.id)?.otherMuted === true;
+
+        if (!otherMuted) void sendPush(conversation.otherId, {
           title: myName,
           body: trimmed.length > 140 ? `${trimmed.slice(0, 137)}...` : trimmed,
           data: { type: 'message', conversationId: conversation.id },
@@ -172,7 +224,7 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
         updateDoc(doc(db, 'conversations', conversationId), { [`readAt.${uid}`]: serverTimestamp() }).catch(() => {});
       },
     }),
-    [conversations, uid, role, myName],
+    [conversations, loaded, uid, role, myName],
   );
 
   return <MessagesContext.Provider value={value}>{children}</MessagesContext.Provider>;

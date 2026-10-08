@@ -16,6 +16,14 @@ import { useProfile } from '@/components/profile-provider';
 import { useMemo } from 'react';
 import { useSafeNavigation } from '@/hooks/use-safe-navigation';
 import { useAppTheme, withAlpha, type ThemeColors } from '@/components/theme-provider';
+import { parseDateInput } from '@/lib/date-input';
+import { formatFee, getRequestType, getServiceStatus, getStatusLabel, type ServiceStatus } from '@/lib/service-status';
+
+function statusColor(status: ServiceStatus, colors: ThemeColors) {
+  if (status === 'completed') return colors.green;
+  if (status === 'pending') return colors.blue;
+  return colors.gold;
+}
 
 // Mechanics land on their job dashboard instead of the customer's garage dashboard.
 export default function HomeScreen() {
@@ -30,7 +38,14 @@ function CustomerHome() {
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { cars, profile, scheduledServices } = useProfile();
   const primaryCar = cars.find((car) => car.id === profile.primaryCarId) ?? cars[0];
-  const nextScheduledService = scheduledServices[0];
+  // Every booking that isn't finished yet, soonest first. Finished ones move to the car's Records.
+  const upcomingServices = useMemo(
+    () =>
+      scheduledServices
+        .filter((service) => getServiceStatus(service) !== 'completed')
+        .sort((a, b) => (parseDateInput(a.scheduledDate)?.getTime() ?? Infinity) - (parseDateInput(b.scheduledDate)?.getTime() ?? Infinity)),
+    [scheduledServices],
+  );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -71,15 +86,36 @@ function CustomerHome() {
               </View>
               <Text style={styles.summaryTitle}>Upcoming appointment</Text>
             </View>
-            {nextScheduledService ? (
-              <>
-                <Text style={styles.summaryItem}>{nextScheduledService.title}</Text>
-                <Text style={styles.summaryMeta}>
-                  Scheduled for {nextScheduledService.scheduledDate} • {nextScheduledService.vehicle}
-                </Text>
-              </>
+            {upcomingServices.length > 0 ? (
+              upcomingServices.map((service, index) => {
+                const status = getServiceStatus(service);
+                const color = statusColor(status, colors);
+
+                return (
+                  <Pressable
+                    key={service.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${service.title}`}
+                    onPress={() => navigate(`/car/${service.carId}`)}
+                    style={({ pressed }) => [styles.appointmentRow, index > 0 && styles.appointmentDivider, pressed && styles.buttonPressed]}
+                  >
+                    <View style={styles.appointmentText}>
+                      <Text style={styles.appointmentTitle}>{service.title}</Text>
+                      <Text style={styles.summaryMeta}>
+                        {service.scheduledDate} • {service.time}
+                      </Text>
+                      <Text style={styles.summaryMeta}>
+                        {getRequestType(service) === 'checkup' ? 'Checkup' : 'Service'} • {service.vehicle}{formatFee(service.fee) ? ` • ${formatFee(service.fee)}` : ''}
+                      </Text>
+                    </View>
+                    <View style={[styles.appointmentBadge, { backgroundColor: withAlpha(color, 0.14), borderColor: withAlpha(color, 0.38) }]}>
+                      <Text style={[styles.appointmentBadgeText, { color }]}>{getStatusLabel(status)}</Text>
+                    </View>
+                  </Pressable>
+                );
+              })
             ) : (
-              <Text style={styles.summaryMeta}>No service has been booked yet.</Text>
+              <Text style={styles.summaryMeta}>No upcoming appointments. Book a service from your garage.</Text>
             )}
           </View>
         </ScrollView>
@@ -331,6 +367,12 @@ function createStyles(colors: ThemeColors, isDark: boolean) {
     fontWeight: '800',
     marginLeft: 10,
   },
+  appointmentRow: { alignItems: 'center', flexDirection: 'row', gap: 10, paddingVertical: 10 },
+  appointmentDivider: { borderTopColor: colors.border, borderTopWidth: 1 },
+  appointmentText: { flex: 1, minWidth: 0 },
+  appointmentTitle: { color: colors.text, fontSize: 15, fontWeight: '800' },
+  appointmentBadge: { borderRadius: 999, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 3 },
+  appointmentBadgeText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
   summaryMeta: {
     color: colors.softText,
     fontFamily: 'Arial',
