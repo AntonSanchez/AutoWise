@@ -9,13 +9,13 @@ Running Commands:
 
 - npx expo start
 
-#Accounts
+# Accounts
 
 Admin : admin@gmail.com - admin123
 
 Mechanic : mechanic2@gmail.com - mechanic123
 
-#OLD
+# OLD
 
 Email: main@gmail.com
 
